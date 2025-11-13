@@ -1,0 +1,190 @@
+{
+  "auth": {
+    "login": {
+      "title": "تسجيل الدخول",
+      "subtitle": "ادخل بيانات حسابك لبدء استخدام التطبيق بسهولة.",
+      "email": "البريد الإلكتروني",
+      "password": "كلمة المرور",
+      "forgotPassword": "هل نسيت كلمة المرور؟",
+      "button": "تسجيل الدخول",
+      "separator": "أو تابع باستخدام البريد الإلكتروني .",
+      "registerQuestion": "ليس لديك حساب؟",
+      "registerLink": "أنشئ حسابًا جديدًا",
+      "emailRequired": "البريد الإلكتروني مطلوب",
+      "passwordRequired": "كلمة المرور مطلوبة",
+      "phoneLoginQuestion": "تود تسجيل الدخول برقم الهاتف؟",
+      "phoneLoginLink": "اضغط هنا",
+      "generalError": "حدث خطأ أثناء تسجيل الدخول"
+    },
+    "register": {
+      "title": "إنشاء حساب جديد",
+      "subtitle": "سجل بياناتك الشخصية لبدء رحلتك التعليمية",
+      "fullName": "الاسم الكامل",
+      "email": "البريد الإلكتروني",
+      "phone": "رقم الجوال",
+      "password": "كلمة المرور",
+      "confirmPassword": "تأكيد كلمة المرور",
+      "terms": "أوافق على",
+      "termsLink": "الشروط والأحكام",
+      "button": "إنشاء حساب",
+      "separator": "أو تابع باستخدام البريد الإلكتروني .",
+      "loginQuestion": "لديك حساب بالفعل؟",
+      "loginLink": "تسجيل الدخول",
+      "fullNameRequired": "الاسم الكامل مطلوب",
+      "emailRequired": "البريد الإلكتروني مطلوب",
+      "invalidEmail": "البريد الإلكتروني غير صحيح",
+      "phoneRequired": "رقم الهاتف مطلوب",
+      "passwordRequired": "كلمة المرور مطلوبة",
+      "passwordMin": "كلمة المرور يجب أن تكون 6 أحرف على الأقل",
+      "passwordMismatch": "كلمة المرور غير متطابقة",
+      "termsRequired": "يجب الموافقة على الشروط والأحكام",
+      "success": "تم التسجيل بنجاح"
+    }
+  },
+  "common": {
+    "or": "أو",
+    "apple": "Apple",
+    "google": "Google",
+    "error": "خطأ",
+    "success": "نجح",
+    "ok": "حسناً",
+    "cancel": "إلغاء",
+    "loading": "جاري التحميل...",
+    "retry": "إعادة المحاولة",
+    "goBack": "العودة",
+    "placeholder": {
+      "email": "example@email.com",
+      "password": "********",
+      "fullName": "محمد أحمد",
+      "phone": "05xxxxxxxx"
+    }
+  },
+  "otp": {
+    "title": "أدخل رمز التحقق",
+    "instructions": "لقد أرسلنا رمزا إلى رقم هاتفك الذي أدخلته، يرجى إدخال الرمز لإكمال التحقق.",
+    "verify": "تحقق الان",
+    "noCode": "لم يصلك أي رمز؟",
+    "resend": "أعد إرسال الرمز",
+    "resendCountdown": "أعد إرسال الرمز ({{seconds}})",
+    "incomplete": "الرجاء إدخال رمز التحقق كاملاً",
+    "invalid": "رمز التحقق غير صحيح",
+    "sendFailed": "فشل إرسال رمز التحقق",
+    "sent": "تم إرسال رمز التحقق بنجاح",
+    "waitBeforeResend": "الرجاء الانتظار {{seconds}} ثانية قبل إعادة الإرسال"
+  },
+  "register": {
+    "success": {
+      "congratulations": "مبروووك !",
+      "welcome": "أهلا بك في ملاقن لقد تم إنشاء حسابك بنجاح",
+      "user": "المستخدم",
+      "startButton": "ابدأ وتعلم"
+    }
+  },
+  "profile": {
+    "title": "الملف الشخصي",
+    "guest": "ضيف",
+    "settings": "الإعدادات",
+    "language": "اللغة",
+    "about": "حول التطبيق",
+    "logout": {
+      "title": "تسجيل الخروج",
+      "message": "هل أنت متأكد من رغبتك في تسجيل الخروج؟",
+      "confirm": "تسجيل الخروج",
+      "button": "تسجيل الخروج",
+      "error": "حدث خطأ أثناء تسجيل الخروج"
+    }
+  },
+  "explore": {
+    "title": "استكشف",
+    "description": "تصفح مواردنا وتعرّف على المزايا القادمة التي ستساعدك على الاستعداد بأفضل صورة.",
+    "authentication": "المصادقة",
+    "login": "تسجيل الدخول",
+    "register": "إنشاء حساب",
+    "sections": {
+      "routing": {
+        "title": "التنقل وهيكلة التطبيق",
+        "description": "نعتمد على Expo Router لتنظيم تجربة المستخدم بسلاسة. يمكنك دائماً تبديل اللغة أو التنقل بين الأقسام من الشريط السفلي."
+      },
+      "progress": {
+        "title": "متابعة التقدم",
+        "description": "انتظرنا قريباً! ستظهر لوحات تحكم تفصيلية للدروس والإنجازات والتوصيات المخصصة."
+      },
+      "support": {
+        "title": "تحتاج مساعدة؟",
+        "description": "تواصل مع فريق الدعم مباشرة من شاشة الملف الشخصي أو عبر واتساب لتحصل على المساعدة بشكل أسرع."
+      }
+    },
+    "learnMore": "اعرف المزيد"
+  },
+  "home": {
+    "pageTitle": "الصفحة الرئيسية",
+    "guest": "صديقنا",
+    "welcome": "مرحباً يا {{name}}",
+    "subtitle": "مركز التحكم الشخصي - تتبع تقدمك وادرس بذكاء",
+    "availableTests": "الاختبارات المتاحة في النظام",
+    "startNow": "ابدأ الان",
+    "overview": {
+      "title": "نظرة عامة اليوم",
+      "description": "استعرض تقدمك التعليمي، واصل من حيث توقفت، أو اكتشف دروساً جديدة لتواصل تطوير مهاراتك."
+    },
+    "quickActions": "إجراءات سريعة",
+    "actions": {
+      "learn": "اكمل التعلم",
+      "exams": "اختبارات تجريبية",
+      "phoneLogin": "تسجيل برقم الجوال"
+    }
+  },
+  "tracks": {
+    "totalLessons": "إجمالي الدروس",
+    "completed": "مكتمل",
+    "progress": "التقدم",
+    "lessonsTitle": "قائمة الدروس",
+    "noLessons": "لا توجد دروس متاحة حالياً",
+    "errorLoading": "حدث خطأ في تحميل المسار",
+    "errorNotFound": "المسار غير موجود"
+  },
+  "lessons": {
+    "lessonDetails": "تفاصيل الدرس",
+    "description": "الوصف",
+    "content": "المحتوى",
+    "yourProgress": "تقدمك",
+    "attempts": "المحاولات",
+    "lastScore": "آخر نتيجة",
+    "bestScore": "أفضل نتيجة",
+    "completed": "مكتمل",
+    "startLesson": "ابدأ الدرس",
+    "tryAgain": "حاول مرة أخرى",
+    "questions": "أسئلة",
+    "minutes": "دقيقة",
+    "difficulty": {
+      "easy": "سهل",
+      "medium": "متوسط",
+      "hard": "صعب"
+    },
+    "errorLoading": "حدث خطأ في تحميل الدرس",
+    "errorNotFound": "الدرس غير موجود",
+    "errorStarting": "حدث خطأ في بدء الدرس",
+    "errorLoadingAttempt": "حدث خطأ في تحميل المحاولة",
+    "noQuestionsAvailable": "لا توجد أسئلة متاحة",
+    "questionCount": "{{current}} من {{total}}",
+    "multipleChoice": "اختيار متعدد",
+    "singleChoice": "اختيار واحد",
+    "pleaseSelectAnswer": "الرجاء اختيار إجابة",
+    "errorSavingAnswer": "حدث خطأ في حفظ الإجابة",
+    "incompleteAttempt": "محاولة غير مكتملة",
+    "incompleteAttemptMessage": "لقد أجبت على {{answered}} من {{total}} سؤال. هل تريد التسليم الآن؟",
+    "submitAnyway": "سلم الآن",
+    "submitConfirm": "تأكيد التسليم",
+    "submitConfirmMessage": "هل أنت متأكد من رغبتك في تسليم المحاولة؟",
+    "submit": "تسليم",
+    "previous": "السابق",
+    "next": "التالي",
+    "exitAttempt": "الخروج من المحاولة",
+    "exitAttemptMessage": "هل أنت متأكد من رغبتك في الخروج؟ سيتم حفظ إجاباتك.",
+    "exit": "خروج",
+    "attemptCompleted": "تم إكمال المحاولة",
+    "yourScore": "نتيجتك: {{score}}%",
+    "errorSubmitting": "حدث خطأ في تسليم المحاولة"
+  }
+}
+

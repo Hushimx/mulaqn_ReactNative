@@ -1,110 +1,182 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import { ScrollView, StyleSheet, View, Text, TouchableOpacity } from 'react-native';
+import { useTranslation } from 'react-i18next';
+import { useRouter } from 'expo-router';
+import { MaterialIcons } from '@expo/vector-icons';
+import { LanguageSwitcher } from '@/components/ui/LanguageSwitcher';
 
-import { Collapsible } from '@/components/Collapsible';
-import { ExternalLink } from '@/components/ExternalLink';
-import ParallaxScrollView from '@/components/ParallaxScrollView';
-import { ThemedText } from '@/components/ThemedText';
-import { ThemedView } from '@/components/ThemedView';
-import { IconSymbol } from '@/components/ui/IconSymbol';
+export default function ExploreScreen() {
+  const { t } = useTranslation();
+  const router = useRouter();
 
-export default function TabTwoScreen() {
+  const sections = [
+    {
+      key: 'routing',
+      title: t('explore.sections.routing.title'),
+      description: t('explore.sections.routing.description'),
+      icon: 'hub',
+    },
+    {
+      key: 'progress',
+      title: t('explore.sections.progress.title'),
+      description: t('explore.sections.progress.description'),
+      icon: 'trending-up',
+    },
+    {
+      key: 'support',
+      title: t('explore.sections.support.title'),
+      description: t('explore.sections.support.description'),
+      icon: 'support-agent',
+    },
+  ];
+
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#D0D0D0', dark: '#353636' }}
-      headerImage={
-        <IconSymbol
-          size={310}
-          color="#808080"
-          name="chevron.left.forwardslash.chevron.right"
-          style={styles.headerImage}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Explore</ThemedText>
-      </ThemedView>
-      <ThemedText>This app includes example code to help you get started.</ThemedText>
-      <Collapsible title="File-based routing">
-        <ThemedText>
-          This app has two screens:{' '}
-          <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> and{' '}
-          <ThemedText type="defaultSemiBold">app/(tabs)/explore.tsx</ThemedText>
-        </ThemedText>
-        <ThemedText>
-          The layout file in <ThemedText type="defaultSemiBold">app/(tabs)/_layout.tsx</ThemedText>{' '}
-          sets up the tab navigator.
-        </ThemedText>
-        <ExternalLink href="https://docs.expo.dev/router/introduction">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Android, iOS, and web support">
-        <ThemedText>
-          You can open this project on Android, iOS, and the web. To open the web version, press{' '}
-          <ThemedText type="defaultSemiBold">w</ThemedText> in the terminal running this project.
-        </ThemedText>
-      </Collapsible>
-      <Collapsible title="Images">
-        <ThemedText>
-          For static images, you can use the <ThemedText type="defaultSemiBold">@2x</ThemedText> and{' '}
-          <ThemedText type="defaultSemiBold">@3x</ThemedText> suffixes to provide files for
-          different screen densities
-        </ThemedText>
-        <Image source={require('@/assets/images/react-logo.png')} style={{ alignSelf: 'center' }} />
-        <ExternalLink href="https://reactnative.dev/docs/images">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Custom fonts">
-        <ThemedText>
-          Open <ThemedText type="defaultSemiBold">app/_layout.tsx</ThemedText> to see how to load{' '}
-          <ThemedText style={{ fontFamily: 'SpaceMono' }}>
-            custom fonts such as this one.
-          </ThemedText>
-        </ThemedText>
-        <ExternalLink href="https://docs.expo.dev/versions/latest/sdk/font">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Light and dark mode components">
-        <ThemedText>
-          This template has light and dark mode support. The{' '}
-          <ThemedText type="defaultSemiBold">useColorScheme()</ThemedText> hook lets you inspect
-          what the user&apos;s current color scheme is, and so you can adjust UI colors accordingly.
-        </ThemedText>
-        <ExternalLink href="https://docs.expo.dev/develop/user-interface/color-themes/">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Animations">
-        <ThemedText>
-          This template includes an example of an animated component. The{' '}
-          <ThemedText type="defaultSemiBold">components/HelloWave.tsx</ThemedText> component uses
-          the powerful <ThemedText type="defaultSemiBold">react-native-reanimated</ThemedText>{' '}
-          library to create a waving hand animation.
-        </ThemedText>
-        {Platform.select({
-          ios: (
-            <ThemedText>
-              The <ThemedText type="defaultSemiBold">components/ParallaxScrollView.tsx</ThemedText>{' '}
-              component provides a parallax effect for the header image.
-            </ThemedText>
-          ),
-        })}
-      </Collapsible>
-    </ParallaxScrollView>
+    <View style={styles.wrapper}>
+      <LanguageSwitcher />
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.header}>
+        <Text style={styles.title}>
+          {t('explore.title')}
+        </Text>
+        <Text style={styles.description}>
+          {t('explore.description')}
+        </Text>
+      </View>
+
+      <View style={styles.quickLinks}>
+        <TouchableOpacity
+          activeOpacity={0.8}
+          style={styles.quickLink}
+          onPress={() => router.push('/login')}
+        >
+          <MaterialIcons name="login" size={24} color="#D4AF37" />
+          <Text style={styles.quickLinkText}>{t('explore.login')}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          activeOpacity={0.8}
+          style={styles.quickLink}
+          onPress={() => router.push('/register')}
+        >
+          <MaterialIcons name="person-add-alt" size={24} color="#D4AF37" />
+          <Text style={styles.quickLinkText}>{t('explore.register')}</Text>
+        </TouchableOpacity>
+      </View>
+
+      {sections.map(section => (
+        <View key={section.key} style={styles.card}>
+          <View style={styles.cardHeader}>
+            <MaterialIcons name={section.icon as any} size={26} color="#D4AF37" />
+            <Text style={styles.cardTitle}>
+              {section.title}
+            </Text>
+          </View>
+          <Text style={styles.cardBody}>
+            {section.description}
+          </Text>
+        </View>
+      ))}
+
+      <TouchableOpacity
+        style={styles.learnMore}
+        activeOpacity={0.85}
+        onPress={() => router.push('/(tabs)/profile')}
+      >
+        <MaterialIcons name="info" size={20} color="#0B1E33" />
+        <Text style={styles.learnMoreText}>{t('explore.learnMore')}</Text>
+      </TouchableOpacity>
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  headerImage: {
-    color: '#808080',
-    bottom: -90,
-    left: -35,
-    position: 'absolute',
+  wrapper: {
+    flex: 1,
+    backgroundColor: '#102A43',
   },
-  titleContainer: {
-    flexDirection: 'row',
+  container: {
+    flex: 1,
+    backgroundColor: '#102A43',
+  },
+  content: {
+    paddingHorizontal: 24,
+    paddingTop: 32,
+    paddingBottom: 40,
+    gap: 20,
+  },
+  header: {
+    gap: 12,
+  },
+  title: {
+    color: '#FFFFFF',
+    fontSize: 28,
+    fontWeight: '700',
+  },
+  description: {
+    color: '#FFFFFF',
+    opacity: 0.8,
+    fontSize: 14,
+    lineHeight: 22,
+  },
+  quickLinks: {
+    gap: 12,
+  },
+  quickLink: {
+    flex: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderRadius: 14,
+    paddingVertical: 18,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    gap: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  quickLinkText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  card: {
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderRadius: 16,
+    padding: 20,
+    gap: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  cardHeader: {
+    alignItems: 'center',
+    gap: 10,
+  },
+  cardTitle: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+    flex: 1,
+  },
+  cardBody: {
+    color: '#FFFFFF',
+    opacity: 0.85,
+    fontSize: 14,
+    lineHeight: 22,
+  },
+  learnMore: {
+    marginTop: 12,
+    alignSelf: 'center',
+    backgroundColor: '#D4AF37',
+    borderRadius: 999,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    alignItems: 'center',
     gap: 8,
+  },
+  learnMoreText: {
+    color: '#0B1E33',
+    fontSize: 14,
+    fontWeight: '700',
   },
 });

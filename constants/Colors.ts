@@ -1,26 +1,35 @@
 /**
- * Below are the colors that are used in the app. The colors are defined in the light and dark mode.
- * There are many other ways to style your app. For example, [Nativewind](https://www.nativewind.dev/), [Tamagui](https://tamagui.dev/), [unistyles](https://reactnativeunistyles.vercel.app), etc.
+ * Mulaqn App Color System
  */
 
-const tintColorLight = '#0a7ea4';
-const tintColorDark = '#fff';
+// Main background gradient colors
+export const gradientColors = {
+  start: '#0F1419',
+  middle: '#1B365D',
+  end: '#2E5984',
+};
+
+// Button gradient colors
+export const buttonGradient = {
+  start: '#D4AF37',
+  end: '#F4E185',
+};
 
 export const Colors = {
   light: {
-    text: '#11181C',
-    background: '#fff',
-    tint: tintColorLight,
-    icon: '#687076',
-    tabIconDefault: '#687076',
-    tabIconSelected: tintColorLight,
+    text: '#0A1622',
+    background: '#FFFFFF',
+    tint: '#D4AF37',
+    icon: '#6A6A6A',
+    tabIconDefault: '#B3B3B3',
+    tabIconSelected: '#D4AF37',
   },
   dark: {
-    text: '#ECEDEE',
-    background: '#151718',
-    tint: tintColorDark,
-    icon: '#9BA1A6',
-    tabIconDefault: '#9BA1A6',
-    tabIconSelected: tintColorDark,
+    text: '#FFFFFF',
+    background: gradientColors.end, // Main gradient end color
+    tint: '#DCBF5F',
+    icon: '#B3B3B3',
+    tabIconDefault: '#8C8C8C',
+    tabIconSelected: '#DCBF5F',
   },
 };

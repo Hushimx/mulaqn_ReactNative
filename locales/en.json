@@ -1,0 +1,133 @@
+{
+  "auth": {
+    "login": {
+      "title": "Login",
+      "subtitle": "Enter your account details to start using the app easily.",
+      "email": "Email",
+      "password": "Password",
+      "forgotPassword": "Forgot Password?",
+      "button": "Login",
+      "separator": "Or continue with email.",
+      "registerQuestion": "Don't have an account?",
+      "registerLink": "Create a new account",
+      "phoneLoginQuestion": "Prefer to login with your phone number?",
+      "phoneLoginLink": "Tap here",
+      "generalError": "Something went wrong while signing in. Please try again.",
+      "emailRequired": "Email is required",
+      "passwordRequired": "Password is required"
+    },
+    "register": {
+      "title": "Create New Account",
+      "subtitle": "Register your personal information to start your educational journey",
+      "fullName": "Full Name",
+      "email": "Email",
+      "phone": "Phone Number",
+      "password": "Password",
+      "confirmPassword": "Confirm Password",
+      "terms": "I agree to",
+      "termsLink": "Terms and Conditions",
+      "button": "Create Account",
+      "separator": "Or continue with email.",
+      "loginQuestion": "Already have an account?",
+      "loginLink": "Login",
+      "fullNameRequired": "Full name is required",
+      "emailRequired": "Email is required",
+      "invalidEmail": "Please enter a valid email address",
+      "phoneRequired": "Phone number is required",
+      "passwordRequired": "Password is required",
+      "passwordMin": "Password must be at least 6 characters",
+      "passwordMismatch": "Passwords do not match",
+      "termsRequired": "You must agree to the terms and conditions",
+      "success": "Registration completed successfully"
+    }
+  },
+  "common": {
+    "error": "Error",
+    "success": "Success",
+    "ok": "OK",
+    "cancel": "Cancel",
+    "loading": "Loading...",
+    "or": "Or",
+    "apple": "Apple",
+    "google": "Google",
+    "placeholder": {
+      "email": "example@email.com",
+      "password": "********",
+      "fullName": "John Doe",
+      "phone": "05xxxxxxxx"
+    }
+  },
+  "otp": {
+    "title": "Enter verification code",
+    "instructions": "We have sent a code to the phone number you entered. Please enter it to complete verification.",
+    "verify": "Verify now",
+    "noCode": "Didn't receive a code?",
+    "resend": "Resend code",
+    "resendCountdown": "Resend code ({{seconds}})",
+    "incomplete": "Please enter the complete verification code",
+    "invalid": "The verification code is incorrect",
+    "sendFailed": "Failed to send the verification code",
+    "sent": "Verification code sent successfully",
+    "waitBeforeResend": "Please wait {{seconds}} seconds before resending"
+  },
+  "register": {
+    "success": {
+      "congratulations": "Congratulations!",
+      "welcome": "Welcome to Mulaqn, your account has been created successfully",
+      "user": "User",
+      "startButton": "Start learning"
+    }
+  },
+  "profile": {
+    "title": "Profile",
+    "guest": "Guest",
+    "settings": "Settings",
+    "language": "Language",
+    "about": "About the app",
+    "logout": {
+      "title": "Logout",
+      "message": "Are you sure you want to log out?",
+      "confirm": "Logout",
+      "button": "Logout",
+      "error": "An error occurred while logging out"
+    }
+  },
+  "home": {
+    "guest": "Guest",
+    "welcome": "Welcome, {{name}}!",
+    "subtitle": "Choose the best path to continue your learning journey.",
+    "overview": {
+      "title": "Today's overview",
+      "description": "Review your learning progress, pick up where you left off, or discover new lessons to keep leveling up your skills."
+    },
+    "quickActions": "Quick actions",
+    "actions": {
+      "learn": "Continue learning",
+      "exams": "Mock exams",
+      "phoneLogin": "Phone login"
+    }
+  },
+  "explore": {
+    "title": "Explore",
+    "description": "Browse our resources and discover upcoming features that will help you prepare efficiently.",
+    "authentication": "Authentication",
+    "login": "Login",
+    "register": "Register",
+    "sections": {
+      "routing": {
+        "title": "Navigation & routing",
+        "description": "We rely on Expo Router to organise the experience smoothly. You can always switch languages or move between tabs from the bottom navigation."
+      },
+      "progress": {
+        "title": "Learning progress",
+        "description": "Stay tuned! Soon you will find detailed dashboards for lessons, achievements and personalised recommendations."
+      },
+      "support": {
+        "title": "Need help?",
+        "description": "Contact the support team directly from the profile screen or through WhatsApp for faster assistance."
+      }
+    },
+    "learnMore": "Learn more"
+  }
+}
+
