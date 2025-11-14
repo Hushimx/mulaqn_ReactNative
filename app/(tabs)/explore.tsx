@@ -1,8 +1,8 @@
-import { ScrollView, StyleSheet, View, Text, TouchableOpacity } from 'react-native';
-import { useTranslation } from 'react-i18next';
-import { useRouter } from 'expo-router';
-import { MaterialIcons } from '@expo/vector-icons';
 import { LanguageSwitcher } from '@/components/ui/LanguageSwitcher';
+import { MaterialIcons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
+import { useTranslation } from 'react-i18next';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 export default function ExploreScreen() {
   const { t } = useTranslation();
@@ -81,6 +81,14 @@ export default function ExploreScreen() {
         >
           <MaterialIcons name="person-add-alt" size={24} color="#D4AF37" />
           <Text style={styles.quickLinkText}>{t('explore.register')}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          activeOpacity={0.8}
+          style={styles.quickLink}
+          onPress={() => router.push('/welcome')}
+        >
+          <MaterialIcons name="school" size={24} color="#D4AF37" />
+          <Text style={styles.quickLinkText}>Onboarding</Text>
         </TouchableOpacity>
       </View>
 
