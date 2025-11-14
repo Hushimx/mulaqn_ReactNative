@@ -65,10 +65,10 @@ class ApiService {
   ): Promise<T> {
     const token = await this.getToken();
     
-    const headers: HeadersInit = {
+    const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
-      ...options.headers,
+      ...(options.headers as Record<string, string>),
     };
 
     if (token) {
@@ -182,8 +182,34 @@ export const API_ENDPOINTS = {
   POINTS: '/me/points',
   LEADERBOARD: '/leaderboard',
   
+  // Profile
+  PROFILE: '/me/profile',
+  PAYMENTS: '/me/payments',
+  
   // Saved Questions
   SAVED_QUESTIONS: '/saved-questions',
   SAVED_QUESTION: (id: string | number) => `/saved-questions/${id}`,
+  
+  // Assessments
+  ASSESSMENTS: (trackId: string | number) => `/tracks/${trackId}/assessments`,
+  ASSESSMENT: (id: string | number) => `/assessments/${id}`,
+  ASSESSMENT_START: '/assessments/start',
+  ASSESSMENT_ACTIVE: '/assessments/active/current',
+  ASSESSMENT_SAVE_RESPONSE: (attemptId: string | number) => `/assessment-attempts/${attemptId}/responses`,
+  ASSESSMENT_SUBMIT: (attemptId: string | number) => `/assessment-attempts/${attemptId}/submit`,
+  ASSESSMENT_CANCEL: (attemptId: string | number) => `/assessment-attempts/${attemptId}/cancel`,
+  ASSESSMENT_REVIEW: (attemptId: string | number) => `/assessment-attempts/${attemptId}/review`,
+  ASSESSMENT_TOGGLE_FLAG: (attemptId: string | number) => `/assessment-attempts/${attemptId}/flag`,
+  
+  // Saved Questions
+  SAVE_QUESTION: '/saved-questions',
+
+  // Subscriptions
+  SUBSCRIPTION_PLANS: (trackId: string | number) => `/tracks/${trackId}/subscription-plans`,
+  MY_SUBSCRIPTIONS: '/me/subscriptions',
+  CHECK_TRACK_SUBSCRIPTION: (trackId: string | number) => `/me/subscriptions/track/${trackId}`,
+  
+  // Payments
+  CREATE_PAYMENT: (planId: string | number) => `/subscription-plans/${planId}/pay`,
 };
 

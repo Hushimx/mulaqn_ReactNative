@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   StatusBar,
+  Alert,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -17,6 +18,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { useTrack, getTrackColors } from '@/contexts/TrackContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { api, API_ENDPOINTS } from '@/utils/api';
+import { ActiveAssessmentModal } from '@/components/ActiveAssessmentModal';
 
 interface Track {
   id: number;
@@ -56,6 +58,9 @@ export default function TrackDashboardScreen() {
   const [completedTests, setCompletedTests] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [activeAttempt, setActiveAttempt] = useState<any>(null);
+  const [showActiveModal, setShowActiveModal] = useState(false);
+  const [cancelingAttempt, setCancelingAttempt] = useState(false);
 
   const trackId = parseInt(id);
   const colors = getTrackColors(trackId);
@@ -64,8 +69,24 @@ export default function TrackDashboardScreen() {
     if (id) {
       setCurrentTrack(trackId);
       fetchTrackData();
+      checkActiveAttempt();
     }
   }, [id]);
+
+  const checkActiveAttempt = async () => {
+    try {
+      const response = await api.get<{ ok: boolean; data: { active_attempt: any } }>(
+        API_ENDPOINTS.ASSESSMENT_ACTIVE
+      );
+      if (response && response.ok && response.data && response.data.active_attempt) {
+        setActiveAttempt(response.data.active_attempt);
+      } else {
+        setActiveAttempt(null);
+      }
+    } catch (error) {
+      setActiveAttempt(null);
+    }
+  };
 
   const fetchTrackData = async () => {
     try {
@@ -93,10 +114,10 @@ export default function TrackDashboardScreen() {
         console.log('Points not available');
       }
 
-      // جلب الاختبارات (سنستخدم endpoint جديد)
+      // جلب الاختبارات
       try {
         const assessmentsResponse = await api.get<{ ok: boolean; data: Assessment[] }>(
-          `/assessments?track_id=${id}`
+          API_ENDPOINTS.ASSESSMENTS(id)
         );
         if (assessmentsResponse && assessmentsResponse.ok && assessmentsResponse.data) {
           setAssessments(assessmentsResponse.data);
@@ -159,8 +180,55 @@ export default function TrackDashboardScreen() {
     }
   };
 
-  const handleAssessmentPress = (assessment: Assessment) => {
-    router.push(`/assessments/${assessment.id}`);
+  const handleAssessmentPress = async (assessment: Assessment) => {
+    // فحص الاختبار النشط
+    await checkActiveAttempt();
+    
+    if (activeAttempt) {
+      setShowActiveModal(true);
+      return;
+    }
+    
+    router.push(`/assessments/${assessment.id}/instructions`);
+  };
+
+  const handleResumeAttempt = () => {
+    if (activeAttempt && activeAttempt.id) {
+      setShowActiveModal(false);
+      const assessmentId = activeAttempt.assessment?.id;
+      if (assessmentId) {
+        router.push(`/assessments/${assessmentId}/take?attemptId=${activeAttempt.id}`);
+      }
+    }
+  };
+
+  const handleCancelAttempt = async () => {
+    if (!activeAttempt || !activeAttempt.id) return;
+
+    Alert.alert(
+      'تأكيد الإلغاء',
+      'هل أنت متأكد من رغبتك في إلغاء المحاولة الحالية؟ سيتم فقدان جميع الإجابات.',
+      [
+        { text: 'لا', style: 'cancel' },
+        {
+          text: 'نعم، إلغاء',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setCancelingAttempt(true);
+              await api.post(API_ENDPOINTS.ASSESSMENT_CANCEL(activeAttempt.id), {});
+              setActiveAttempt(null);
+              setShowActiveModal(false);
+              Alert.alert('تم الإلغاء', 'تم إلغاء المحاولة السابقة بنجاح');
+            } catch (error) {
+              Alert.alert('خطأ', 'حدث خطأ في إلغاء المحاولة');
+            } finally {
+              setCancelingAttempt(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handleLessonsPress = () => {
@@ -209,7 +277,7 @@ export default function TrackDashboardScreen() {
           <View style={styles.headerSpacer} />
           <TouchableOpacity
             style={styles.skipButton}
-            onPress={() => router.back()}
+            onPress={() => router.push('/(tabs)/')}
           >
             <MaterialIcons name="arrow-forward" size={24} color={colors.primary} />
           </TouchableOpacity>
@@ -384,6 +452,20 @@ export default function TrackDashboardScreen() {
             </View>
           </View>
         </ScrollView>
+
+        {/* Modal للاختبار النشط */}
+        <ActiveAssessmentModal
+          visible={showActiveModal}
+          activeAttempt={activeAttempt ? {
+            id: activeAttempt.id,
+            assessment_name: activeAttempt.assessment?.name || 'اختبار',
+            started_at: activeAttempt.started_at,
+          } : null}
+          onResume={handleResumeAttempt}
+          onCancel={handleCancelAttempt}
+          onClose={() => setShowActiveModal(false)}
+          loading={cancelingAttempt}
+        />
       </SafeAreaView>
     </GradientBackground>
   );

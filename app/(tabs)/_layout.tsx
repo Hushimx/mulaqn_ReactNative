@@ -7,9 +7,11 @@ import TabBarBackground from '@/components/ui/TabBarBackground';
 import { Colors } from '@/constants/Colors';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { MaterialIcons } from '@expo/vector-icons';
+import { useTrack } from '@/contexts/TrackContext';
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
+  const { trackColors } = useTrack();
 
   return (
     <Tabs
@@ -37,55 +39,71 @@ export default function TabLayout() {
       }}
     >
       <Tabs.Screen
-        name="explore"
+        name="index"
         options={{
-          title: 'استكشف',
+          title: '',
           tabBarIcon: ({ focused, color }) => (
             <MaterialIcons 
-              name="search" 
-              size={28} 
+              name="home" 
+              size={24} 
               color={focused ? '#D4AF37' : '#8FA4C0'} 
             />
           ),
+        }}
+      />
+      <Tabs.Screen
+        name="explore"
+        options={{
+          title: '',
+          tabBarIcon: ({ focused, color }) => (
+            <MaterialIcons 
+              name="search" 
+              size={24} 
+              color={focused ? '#D4AF37' : '#8FA4C0'} 
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="tracks"
+        options={{
+          title: '',
+          tabBarIcon: ({ focused, color }) => (
+            <View style={[
+              styles.centerTabContainer,
+              { backgroundColor: trackColors.primary }
+            ]}>
+              <MaterialIcons 
+                name="home" 
+                size={28} 
+                color="#FFFFFF" 
+              />
+            </View>
+          ),
+          tabBarLabel: () => null,
         }}
       />
       <Tabs.Screen
         name="shop"
         options={{
-          title: 'المتجر',
+          title: '',
           tabBarIcon: ({ focused, color }) => (
             <MaterialIcons 
-              name="shopping-cart" 
-              size={28} 
+              name="delete-outline" 
+              size={24} 
               color={focused ? '#D4AF37' : '#8FA4C0'} 
             />
           ),
         }}
       />
       <Tabs.Screen
-        name="index"
-        options={{
-          title: 'الرئيسية',
-          tabBarIcon: ({ focused, color }) => (
-            <View style={focused ? styles.activeTabContainer : styles.inactiveTabContainer}>
-              <MaterialIcons 
-                name="home" 
-                size={focused ? 36 : 28} 
-                color={focused ? '#FFFFFF' : '#8FA4C0'} 
-              />
-            </View>
-          ),
-          tabBarLabel: ({ focused }) => focused ? '' : 'الرئيسية',
-        }}
-      />
-      <Tabs.Screen
         name="profile"
         options={{
-          title: 'الملف',
+          title: '',
           tabBarIcon: ({ focused, color }) => (
             <MaterialIcons 
-              name="person" 
-              size={28} 
+              name="person-outline" 
+              size={24} 
               color={focused ? '#D4AF37' : '#8FA4C0'} 
             />
           ),
@@ -96,24 +114,19 @@ export default function TabLayout() {
 }
 
 const styles = StyleSheet.create({
-  activeTabContainer: {
-    backgroundColor: '#D4AF37',
-    borderRadius: 35,
-    width: 70,
-    height: 70,
+  centerTabContainer: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: -35,
-    shadowColor: '#000',
+    marginTop: -30,
+    shadowColor: '#D4AF37',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
+    shadowOpacity: 0.6,
+    shadowRadius: 10,
     elevation: 15,
-  },
-  inactiveTabContainer: {
-    width: 28,
-    height: 28,
-    justifyContent: 'center',
-    alignItems: 'center',
+    borderWidth: 3,
+    borderColor: '#1B365D',
   },
 });

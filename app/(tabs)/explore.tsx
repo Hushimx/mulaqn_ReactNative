@@ -29,6 +29,25 @@ export default function ExploreScreen() {
     },
   ];
 
+  const quickActions = [
+    {
+      key: 'subscription',
+      title: 'الاشتراكات',
+      description: 'اشترك في المسارات التعليمية',
+      icon: 'card-membership',
+      color: '#D4AF37',
+      action: () => router.push('/subscription'),
+    },
+    {
+      key: 'tracks',
+      title: 'المسارات التعليمية',
+      description: 'استكشف جميع المسارات',
+      icon: 'school',
+      color: '#10B981',
+      action: () => router.push('/(tabs)'),
+    },
+  ];
+
   return (
     <View style={styles.wrapper}>
       <LanguageSwitcher />
@@ -63,6 +82,27 @@ export default function ExploreScreen() {
           <MaterialIcons name="person-add-alt" size={24} color="#D4AF37" />
           <Text style={styles.quickLinkText}>{t('explore.register')}</Text>
         </TouchableOpacity>
+      </View>
+
+      {/* Quick Actions */}
+      <View style={styles.quickActionsContainer}>
+        {quickActions.map(action => (
+          <TouchableOpacity
+            key={action.key}
+            style={[styles.quickActionCard, { borderColor: `${action.color}40` }]}
+            onPress={action.action}
+            activeOpacity={0.8}
+          >
+            <View style={[styles.quickActionIcon, { backgroundColor: `${action.color}20` }]}>
+              <MaterialIcons name={action.icon as any} size={32} color={action.color} />
+            </View>
+            <View style={styles.quickActionInfo}>
+              <Text style={styles.quickActionTitle}>{action.title}</Text>
+              <Text style={styles.quickActionDescription}>{action.description}</Text>
+            </View>
+            <MaterialIcons name="chevron-left" size={24} color={action.color} />
+          </TouchableOpacity>
+        ))}
       </View>
 
       {sections.map(section => (
@@ -178,5 +218,40 @@ const styles = StyleSheet.create({
     color: '#0B1E33',
     fontSize: 14,
     fontWeight: '700',
+  },
+  quickActionsContainer: {
+    gap: 12,
+    marginTop: 8,
+  },
+  quickActionCard: {
+    backgroundColor: 'rgba(18, 38, 57, 0.4)',
+    borderRadius: 16,
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderWidth: 2,
+  },
+  quickActionIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  quickActionInfo: {
+    flex: 1,
+  },
+  quickActionTitle: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 4,
+    textAlign: 'right',
+  },
+  quickActionDescription: {
+    color: 'rgba(255, 255, 255, 0.7)',
+    fontSize: 13,
+    textAlign: 'right',
   },
 });

@@ -10,6 +10,7 @@ import 'react-native-reanimated';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { LanguageProvider, useLanguage } from '@/contexts/LanguageContext';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
+import { TrackProvider } from '@/contexts/TrackContext';
 import '@/i18n/config';
 
 // Keep the splash screen visible while we fetch resources
@@ -48,6 +49,9 @@ function RootLayoutNav() {
   return (
     <Stack>
       <Stack.Screen name="login" options={{ headerShown: false }} />
+      <Stack.Screen name="subscription" options={{ headerShown: false }} />
+      <Stack.Screen name="assessments" options={{ headerShown: false }} />
+      <Stack.Screen name="payment" options={{ headerShown: false }} />
       <Stack.Screen name="register" options={{ headerShown: false }} />
       <Stack.Screen name="register-otp" options={{ headerShown: false }} />
       <Stack.Screen name="register-success" options={{ headerShown: false }} />
@@ -90,19 +94,21 @@ function AppProviders({ colorScheme }: AppProvidersProps) {
 
   return (
     <AuthProvider>
-      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-        <View
-          style={[
-            styles.appContainer,
-            {
-              direction: isRTL ? 'rtl' : 'ltr',
-            },
-          ]}
-        >
-          <RootLayoutNav />
-        </View>
-        <StatusBar style="auto" />
-      </ThemeProvider>
+      <TrackProvider>
+        <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+          <View
+            style={[
+              styles.appContainer,
+              {
+                direction: isRTL ? 'rtl' : 'ltr',
+              },
+            ]}
+          >
+            <RootLayoutNav />
+          </View>
+          <StatusBar style="auto" />
+        </ThemeProvider>
+      </TrackProvider>
     </AuthProvider>
   );
 }

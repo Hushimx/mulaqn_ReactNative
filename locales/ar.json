@@ -185,6 +185,120 @@
     "attemptCompleted": "تم إكمال المحاولة",
     "yourScore": "نتيجتك: {{score}}%",
     "errorSubmitting": "حدث خطأ في تسليم المحاولة"
+  },
+  "trackDashboard": {
+    "welcome": "مرحباً {{name}}، جاهز للتميز؟",
+    "stats": {
+      "totalPoints": "النقاط الكلية",
+      "streakDays": "أيام متتالية",
+      "completedTests": "اختبارات مكتملة",
+      "availableLessons": "دروس متاحة"
+    },
+    "assessments": {
+      "placement": {
+        "title": "اختبار محاكي",
+        "desc": "محاكاة للاختبار الحقيقي",
+        "duration": "دقيقة"
+      },
+      "quick": {
+        "title": "اختبار سريع",
+        "desc": "10 أسئلة متنوعة",
+        "duration": "دقيقة"
+      },
+      "medium": {
+        "title": "اختبار متوسط",
+        "desc": "30 سؤال شامل",
+        "duration": "دقيقة"
+      },
+      "lessons": {
+        "title": "استعراض الدروس",
+        "desc": "اطلع على جميع الدروس مع إحصائياتك",
+        "cta": "تصفح من هنا"
+      },
+      "interactive": {
+        "title": "اختبار تفاعلي",
+        "desc": "تجربة تفاعلية ممتعة",
+        "status": "متنوع"
+      },
+      "smart": {
+        "title": "اختبار ذكي",
+        "desc": "تدريب مخصص لنقاط ضعفك",
+        "status": "مرن"
+      }
+    }
+  },
+  "assessments": {
+    "instructions": {
+      "title": "تعليمات الاختبار",
+      "timeMinutes": "دقيقة",
+      "questions": "سؤال",
+      "multipleChoice": "اختيارات متعددة",
+      "importantInstructions": "تعليمات هامة",
+      "instruction1": "المدة المحددة للاختبار هي {{minutes}} دقيقة",
+      "instruction2": "يجب الإجابة على جميع الأسئلة",
+      "instruction3": "يمكنك وضع علامة على الأسئلة للعودة إليها لاحقاً",
+      "instruction4": "يمكنك حفظ الأسئلة المهمة في مكتبتك الشخصية",
+      "instruction5": "الخروج من الاختبار سيؤدي إلى إلغاء المحاولة",
+      "startButton": "ابدأ الاختبار"
+    },
+    "take": {
+      "timeUp": "انتهى الوقت",
+      "autoSubmit": "تم تسليم الاختبار تلقائياً",
+      "question": "سؤال",
+      "englishGrammar": "English Grammar",
+      "multipleChoice": "اختيار من متعدد",
+      "saveButton": "حفظ",
+      "nextButton": "التالي",
+      "previousButton": "السابق",
+      "saveQuestion": "حفظ السؤال",
+      "addNote": "أضف ملاحظة (اختياري):",
+      "notePlaceholder": "اكتب ملاحظتك هنا...",
+      "saveSuccess": "تم حفظ السؤال في مكتبتك الشخصية",
+      "saveError": "حدث خطأ في حفظ السؤال",
+      "exitWarning": "تحذير",
+      "exitMessage": "الخروج من الاختبار سيؤدي إلى إلغاء المحاولة. هل أنت متأكد؟",
+      "cancel": "إلغاء",
+      "confirmExit": "تأكيد الخروج",
+      "submitAssessment": "تسليم الاختبار",
+      "submitConfirm": "لديك {{answered}} من {{total}} إجابة. هل تريد التسليم؟",
+      "submit": "تسليم",
+      "finishAssessment": "إنهاء الاختبار",
+      "answered": "محلول",
+      "flagged": "معلّم",
+      "remaining": "متبقي"
+    },
+    "results": {
+      "congratulations": "مبروك!",
+      "keepTrying": "استمر في المحاولة",
+      "yourFinalScore": "درجتك النهائية",
+      "correctAnswers": "إجابة صحيحة",
+      "incorrectAnswers": "إجابة خاطئة",
+      "unanswered": "غير محلولة",
+      "timeTaken": "دقيقة",
+      "skillsBreakdown": "تحليل الأداء حسب المهارات",
+      "correctOf": "صحيحة من",
+      "reviewAnswers": "مراجعة الإجابات",
+      "backToHome": "العودة للرئيسية"
+    },
+    "review": {
+      "title": "مراجعة الإجابات",
+      "question": "السؤال",
+      "correctAnswer": "إجابة صحيحة",
+      "incorrectAnswer": "إجابة خاطئة",
+      "yourAnswer": "إجابتك",
+      "correctOption": "الإجابة الصحيحة",
+      "explanation": "شرح الإجابة",
+      "previous": "السابق",
+      "next": "التالي",
+      "selectionReason": {
+        "title": "لماذا اخترنا هذا السؤال؟",
+        "fromLesson": "من درس",
+        "unknown": "اخترنا لك هذا السؤال من درس «{lesson}» لأننا نريد تقييم مستواك فيه للمرة الأولى",
+        "weak": "اخترنا لك هذا السؤال من درس «{lesson}» لأن أداءك السابق فيه يحتاج إلى تحسين، ونريد مساعدتك على تطوير مهاراتك",
+        "moderate": "اخترنا لك هذا السؤال من درس «{lesson}» لأن أداءك فيه متفاوت، ونحتاج لفهم نقاط قوتك وضعفك بدقة أكبر",
+        "strong": "اخترنا لك هذا السؤال من درس «{lesson}» للتأكد من استمرار تفوقك وإتقانك لهذا الموضوع"
+      }
+    }
   }
 }
 

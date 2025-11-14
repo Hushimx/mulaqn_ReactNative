@@ -4,15 +4,15 @@ import { LinearGradient } from 'expo-linear-gradient';
 
 interface GradientBackgroundProps {
   children: React.ReactNode;
-  colors?: string[];
-  locations?: number[];
+  colors?: readonly [string, string, ...string[]];
+  locations?: readonly [number, number, ...number[]];
   start?: { x: number; y: number };
   end?: { x: number; y: number };
   style?: ViewStyle;
 }
 
-const defaultColors = ['#0F1419', '#1B365D', '#2E5984'];
-const defaultLocations = [0, 0.5, 1];
+const defaultColors: readonly [string, string, string] = ['#0F1419', '#1B365D', '#2E5984'];
+const defaultLocations: readonly [number, number, number] = [0, 0.5, 1];
 const defaultStart = { x: 0, y: 1 };
 const defaultEnd = { x: 1, y: 0 };
 
