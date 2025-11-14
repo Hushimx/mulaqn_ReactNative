@@ -407,36 +407,77 @@ export default function TakeAssessmentScreen() {
 
   const handleSubmit = async () => {
     try {
+      // إغلاق أي modals مفتوحة
+      setShowNavigationBar(false);
+      
       const response = await api.post<{ ok: boolean; data: any }>(
         API_ENDPOINTS.ASSESSMENT_SUBMIT(attemptId!),
         {}
       );
       
       if (response && response.ok) {
+        // تنظيف الـ timer
+        if (timerRef.current) {
+          clearInterval(timerRef.current);
+        }
         router.replace(`/assessments/${id}/results?attemptId=${attemptId}`);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error submitting assessment:', error);
-      Alert.alert('خطأ', 'حدث خطأ في تسليم الاختبار');
+      
+      // تنظيف الـ timer
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+      
+      // إذا كانت المحاولة غير نشطة، نرجع للـ dashboard
+      const errorMessage = error?.response?.data?.error?.message || error?.message || '';
+      if (errorMessage.includes('نشط') || errorMessage.includes('active')) {
+        Alert.alert(
+          'انتهت المحاولة',
+          'هذه المحاولة انتهت بالفعل. سيتم نقلك للصفحة الرئيسية.',
+          [
+            {
+              text: 'حسناً',
+              onPress: () => {
+                const trackId = attempt?.assessment.track_id;
+                if (trackId) {
+                  router.replace(`/(tabs)/tracks/${trackId}` as any);
+                } else {
+                  router.replace('/(tabs)/' as any);
+                }
+              }
+            }
+          ]
+        );
+      } else {
+        Alert.alert('خطأ', 'حدث خطأ في تسليم الاختبار');
+      }
     }
   };
 
   const handleExit = async () => {
+    // إغلاق الـ Modal أولاً
+    setShowExitModal(false);
+    
+    // تنظيف الـ timer قبل الخروج
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+    }
+    
     try {
       await api.post(API_ENDPOINTS.ASSESSMENT_CANCEL(attemptId!), {});
-      const trackId = attempt?.assessment.track_id;
-      if (trackId) {
-        router.push(`/(tabs)/tracks/${trackId}`);
-      } else {
-        router.back();
-      }
     } catch (error) {
       console.error('Error canceling assessment:', error);
+    } finally {
+      // الانتقال للـ dashboard بغض النظر عن نتيجة الـ API
       const trackId = attempt?.assessment.track_id;
+      
+      // استخدام replace لتدمير الـ screen بالكامل ومنع العودة
       if (trackId) {
-        router.push(`/(tabs)/tracks/${trackId}`);
+        router.replace(`/(tabs)/tracks/${trackId}` as any);
       } else {
-        router.back();
+        router.replace('/(tabs)/' as any);
       }
     }
   };
@@ -826,6 +867,9 @@ export default function TakeAssessmentScreen() {
                     );
                     return;
                   }
+                  
+                  // إغلاق navigation bar أولاً
+                  setShowNavigationBar(false);
                   
                   Alert.alert(
                     'تسليم الاختبار',
