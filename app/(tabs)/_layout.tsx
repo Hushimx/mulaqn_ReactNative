@@ -5,6 +5,7 @@ import React, { useEffect, useMemo } from 'react';
 import { Image, Platform, StyleSheet, View } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useTrack } from '@/contexts/TrackContext';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 export default function TabLayout() {
   const { setCurrentTrack } = useTrack();
@@ -57,8 +58,9 @@ export default function TabLayout() {
   }, [pathname, segments]);
 
   return (
-    <Tabs
-      screenOptions={{
+    <ErrorBoundary>
+      <Tabs
+        screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: '#D4AF37',
         tabBarInactiveTintColor: '#8FA4C0',
@@ -199,6 +201,7 @@ export default function TabLayout() {
         }}
       />
     </Tabs>
+    </ErrorBoundary>
   );
 }
 

@@ -11,6 +11,7 @@ import { useColorScheme } from '@/hooks/useColorScheme';
 import { LanguageProvider, useLanguage } from '@/contexts/LanguageContext';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { TrackProvider } from '@/contexts/TrackContext';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import '@/i18n/config';
 
 // إخفاء جميع الـ warnings والأخطاء من الواجهة
@@ -105,16 +106,18 @@ function AppProviders({ colorScheme }: AppProvidersProps) {
   const { isRTL } = useLanguage();
 
   return (
-    <AuthProvider>
-      <TrackProvider>
-        <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-          <View style={styles.appContainer}>
-            <RootLayoutNav />
-          </View>
-          <StatusBar style="auto" />
-        </ThemeProvider>
-      </TrackProvider>
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <TrackProvider>
+          <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+            <View style={styles.appContainer}>
+              <RootLayoutNav />
+            </View>
+            <StatusBar style="auto" />
+          </ThemeProvider>
+        </TrackProvider>
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }
 

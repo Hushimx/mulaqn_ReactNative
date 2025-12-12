@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { api, API_ENDPOINTS } from '@/utils/api';
+import { logger } from '@/utils/logger';
 
 interface User {
   id: number;
@@ -61,7 +62,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setIsLoading(false);
       }
     } catch (error) {
-      console.error('Error loading token:', error);
+      logger.error('Error loading token:', error);
       setIsLoading(false);
     }
   };
@@ -159,14 +160,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await api.post(API_ENDPOINTS.LOGOUT);
       } catch (error) {
         // حتى لو فشل الـ API، احذف token محلياً
-        console.error('Error logging out from API:', error);
+        logger.error('Error logging out from API:', error);
       }
       
       await api.removeToken();
       setToken(null);
       setUser(null);
     } catch (error) {
-      console.error('Error logging out:', error);
+      logger.error('Error logging out:', error);
     } finally {
       setIsLoading(false);
     }
@@ -194,7 +195,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       // هذا لا يجب أن يحدث مع silent401، لكن للاحتياط
-      console.error('Error refreshing user:', error);
+      logger.error('Error refreshing user:', error);
       await api.removeToken();
       setToken(null);
       setUser(null);

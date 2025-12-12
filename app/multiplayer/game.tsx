@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   StyleSheet,
   View,
@@ -16,6 +16,8 @@ import { getTrackColors } from '@/contexts/TrackContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { api, API_ENDPOINTS } from '@/utils/api';
+import { logger } from '@/utils/logger';
+import { websocket } from '@/utils/websocket';
 import Animated, {
   FadeIn,
   FadeInUp,
@@ -58,10 +60,17 @@ interface Response {
 }
 
 export default function MultiplayerGameScreen() {
+  // ✅ FORCE LOG - Always log, even in production (for debugging)
+  console.log('[Multiplayer] 🚀 Component RENDER - MultiplayerGameScreen');
+  logger.log('[Multiplayer] 🚀 Component RENDER - MultiplayerGameScreen');
   const router = useRouter();
   const { sessionId } = useLocalSearchParams<{ sessionId: string }>();
+  console.log('[Multiplayer] 📋 sessionId from params:', sessionId);
+  logger.log('[Multiplayer] 📋 sessionId from params:', sessionId);
   const { isRTL, textAlign, flexDirection } = useLanguage();
   const { user } = useAuth();
+  console.log('[Multiplayer] 👤 User:', user?.id);
+  logger.log('[Multiplayer] 👤 User:', user?.id);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState<string>('in_progress');
   const [currentQuestion, setCurrentQuestion] = useState<Question | null>(null);
@@ -89,6 +98,12 @@ export default function MultiplayerGameScreen() {
   const hasBothAnsweredFromAnswerRef = useRef(false);
   // ✅ Flag to lock hasBothAnswered during countdown (prevent fetchStatus from interfering)
   const countdownStartedRef = useRef(false);
+  // ✅ Ref to track current question ID (to detect question changes in WebSocket callbacks)
+  const currentQuestionIdRef = useRef<number | null>(null);
+  // ✅ Ref to track WebSocket connection state (to prevent polling when connected)
+  const isWebSocketConnectedRef = useRef(false);
+  // ✅ Ref to track if initial fetchStatus was called after WebSocket connection
+  const initialFetchDoneRef = useRef(false);
 
   // ✅ Keep refs in sync with state
   useEffect(() => {
@@ -116,24 +131,48 @@ export default function MultiplayerGameScreen() {
     if (selectedOption === null && selectedOptionRef.current !== null && !hasAnswered && !showReveal) {
       // Polling or something else tried to clear selectedOption
       // Restore it from ref to protect user's selection
-      console.log('[PROTECT SELECTED OPTION] Restoring selectedOption from ref');
+      logger.log('[PROTECT SELECTED OPTION] Restoring selectedOption from ref');
       setSelectedOption(selectedOptionRef.current);
     }
   }, [selectedOption, hasAnswered, showReveal]);
 
-  // ✅ Reset refs when question changes
+  // ✅ Reset state and refs when question changes
   useEffect(() => {
     if (currentQuestion) {
+      // Update ref to track current question ID
+      currentQuestionIdRef.current = currentQuestion.id;
+      
       // Reset flags when question changes (new question)
       hasBothAnsweredFromAnswerRef.current = false;
       countdownStartedRef.current = false;
       hasAnsweredRef.current = false;
       isSubmittingRef.current = false;
       selectedOptionRef.current = null;
+      
+      // Reset state for new question
+      setHasAnswered(false);
+      setSelectedOption(null);
+      setShowReveal(false);
+      setHasBothAnswered(false);
+      setResponses([]);
+      setCorrectOptionId(null);
+      setReadyForNext(false);
+      setAllReadyForNext(false);
+      logger.log('[Question Changed] Reset all state for new question:', currentQuestion.id);
     }
   }, [currentQuestion?.id]);
 
   const sessionIdNum = parseInt(sessionId || '0');
+  
+  // ✅ Log sessionId for debugging
+  useEffect(() => {
+    logger.log('[Multiplayer] 🔍 Component mounted/updated:', {
+      sessionId: sessionId,
+      sessionIdNum: sessionIdNum,
+      isValid: sessionIdNum > 0
+    });
+  }, [sessionId, sessionIdNum]);
+  
   const colors = getTrackColors(1) || {
     primary: '#D4AF37',
     gradient: ['#0F1419', '#1B365D', '#2E5984'] as const,
@@ -145,32 +184,344 @@ export default function MultiplayerGameScreen() {
   const revealScale = useSharedValue(0.8);
 
   useEffect(() => {
-    fetchStatus();
-    startPolling();
+    // ✅ FORCE LOG - Always log, even in production (for debugging)
+    console.log('[Multiplayer] 🎯 useEffect START - sessionIdNum:', sessionIdNum, 'sessionId:', sessionId);
+    
+    // ✅ CRITICAL: Only proceed if sessionIdNum is valid
+    if (!sessionIdNum || sessionIdNum <= 0) {
+      console.error('[Multiplayer] ❌ Invalid sessionIdNum:', sessionIdNum, 'sessionId:', sessionId);
+      logger.error('[Multiplayer] ❌ Invalid sessionIdNum:', sessionIdNum, 'sessionId:', sessionId);
+      return;
+    }
+    
+    console.log('[Multiplayer] 🎯 useEffect triggered for session:', sessionIdNum);
+    console.log('[Multiplayer] 🎯 useEffect dependencies:', { sessionIdNum, sessionId });
+    logger.log('[Multiplayer] 🎯 useEffect triggered for session:', sessionIdNum);
+    logger.log('[Multiplayer] 🎯 useEffect dependencies:', { sessionIdNum, sessionId });
+    // ✅ Don't fetch status immediately - wait for WebSocket connection attempt
+    // This reduces unnecessary API calls on session creation
+    
+    // Try WebSocket first, fallback to polling
+    const tryWebSocket = async () => {
+      console.log('[Multiplayer] 🔌 Attempting WebSocket connection for session:', sessionIdNum);
+      logger.log('[Multiplayer] 🔌 Attempting WebSocket connection for session:', sessionIdNum);
+      
+      // ✅ CRITICAL: Stop any existing polling BEFORE attempting WebSocket
+      if (pollingInterval.current) {
+        logger.log('[Multiplayer] 🛑 Stopping existing polling before WebSocket attempt');
+        clearInterval(pollingInterval.current);
+        pollingInterval.current = null;
+      }
+      
+      // ✅ Ensure WebSocket state is reset
+      isWebSocketConnectedRef.current = false;
+      
+      try {
+        await websocket.connect(sessionIdNum, {
+          onSessionUpdated: (data) => {
+            logger.log('[WebSocket] 📨 Session updated:', data);
+            // Extract data from nested structure (data.data from broadcastWith)
+            const eventData = data.data || data;
+            
+            // Check if question changed (new question ID) - use ref to avoid stale closure
+            const newQuestionId = eventData.current_question?.id;
+            const questionChanged = newQuestionId && newQuestionId !== currentQuestionIdRef.current;
+            
+            // If question changed, reset all answer-related state FIRST
+            if (questionChanged && newQuestionId) {
+              logger.log('[WebSocket] 🔄 Question changed, resetting state:', newQuestionId);
+              setHasAnswered(false);
+              setSelectedOption(null);
+              setShowReveal(false);
+              setHasBothAnswered(false);
+              setResponses([]);
+              setCorrectOptionId(null);
+              setReadyForNext(false);
+              setAllReadyForNext(false);
+              // Reset refs
+              hasAnsweredRef.current = false;
+              selectedOptionRef.current = null;
+              hasBothAnsweredFromAnswerRef.current = false;
+              countdownStartedRef.current = false;
+            }
+            
+            // ✅ Update state from WebSocket data
+            if (eventData.status) {
+              setStatus(eventData.status);
+              logger.log('[WebSocket] Status updated:', eventData.status);
+              
+              // ✅ CRITICAL: Check if session completed - navigate to results immediately
+              if (eventData.status === 'completed') {
+                logger.log('[WebSocket] ✅ Session completed - navigating to results');
+                router.replace({
+                  pathname: '/multiplayer/results',
+                  params: { sessionId: sessionIdNum.toString() }
+                });
+                return; // Stop processing further updates
+              }
+            }
+            if (eventData.participants) {
+              setParticipants(eventData.participants);
+              logger.log('[WebSocket] Participants updated:', eventData.participants.length);
+            }
+            
+            // ✅ CRITICAL: Check if current_question is null - this means session completed
+            // Even if status is still "in_progress" (race condition), null current_question means no more questions
+            if (eventData.current_question === null) {
+              logger.log('[WebSocket] ⚠️ Current question is null - session completed (even if status not updated yet)');
+              console.log('[WebSocket] ⚠️ Current question is null - session completed (even if status not updated yet)');
+              
+              // Set current_question to null in state
+              setCurrentQuestion(null);
+              
+              // Fetch status to get the latest status (might be 'completed' now)
+              // This handles race condition where WebSocket event has old status
+              fetchStatus(true).catch((error) => {
+                logger.error('[WebSocket] Error fetching status after null question:', error);
+              });
+              
+              // Also check if status is already 'completed' in the event data
+              if (eventData.status === 'completed') {
+                logger.log('[WebSocket] ✅ Status is completed - navigating to results');
+                console.log('[WebSocket] ✅ Status is completed - navigating to results');
+                router.replace({
+                  pathname: '/multiplayer/results',
+                  params: { sessionId: sessionIdNum.toString() }
+                });
+                return; // Stop processing
+              }
+            } else if (eventData.current_question) {
+              setCurrentQuestion(eventData.current_question);
+              setCurrentQuestionOrder(eventData.current_question.question_order);
+              logger.log('[WebSocket] Current question updated:', eventData.current_question.id);
+            }
+            
+            // ✅ Stop loading when we receive session data from WebSocket
+            // This ensures the UI is ready even if fetchStatus hasn't completed yet
+            if (loading) {
+              logger.log('[WebSocket] Stopping loading - received session data');
+              setLoading(false);
+            }
+            
+            // ✅ Handle has_both_answered - triggers countdown
+            if (eventData.has_both_answered !== undefined) {
+              console.log('[WebSocket] has_both_answered updated:', eventData.has_both_answered);
+              logger.log('[WebSocket] has_both_answered updated:', eventData.has_both_answered);
+              setHasBothAnswered(eventData.has_both_answered);
+              hasBothAnsweredRef.current = eventData.has_both_answered;
+              // Countdown will start via useEffect when hasBothAnswered becomes true
+            }
+            
+            // ✅ Handle all_ready_for_next - triggers next question transition
+            if (eventData.all_ready_for_next !== undefined) {
+              logger.log('[WebSocket] all_ready_for_next updated:', eventData.all_ready_for_next);
+              setAllReadyForNext(eventData.all_ready_for_next);
+            }
+            if (eventData.all_ready !== undefined && eventData.all_ready) {
+              logger.log('[WebSocket] all_ready is true - both participants ready');
+              setAllReadyForNext(true);
+            }
+          },
+          onQuestionRevealed: (data) => {
+            console.log('[WebSocket] ✅ Question revealed:', data);
+            logger.log('[WebSocket] ✅ Question revealed:', data);
+            // ✅ Data is already parsed in websocket.ts, use it directly
+            const correctOptionId = data.correct_option_id;
+            const responses = data.responses || [];
+            console.log('[WebSocket] Setting reveal state:', { correctOptionId, responsesCount: responses.length });
+            logger.log('[WebSocket] Setting reveal state:', { correctOptionId, responsesCount: responses.length });
+            setCorrectOptionId(correctOptionId);
+            setResponses(responses);
+            setShowReveal(true);
+            console.log('[WebSocket] Reveal state updated - correct_option_id:', correctOptionId);
+            logger.log('[WebSocket] Reveal state updated - correct_option_id:', correctOptionId);
+          },
+          onParticipantReady: (data) => {
+            logger.log('[WebSocket] 👤 Participant ready:', data);
+            const eventData = data.data || data;
+            if (eventData.all_ready || data.all_ready) {
+              logger.log('[WebSocket] ✅ All participants ready - next question ready');
+              setAllReadyForNext(true);
+            }
+            // Update participant ready state if needed
+            if (eventData.is_ready !== undefined) {
+              logger.log('[WebSocket] Participant ready state:', eventData.is_ready);
+            }
+          },
+          onConnected: () => {
+            logger.log('[WebSocket] ✅✅✅ CONNECTED - stopping ALL polling');
+            // Update WebSocket connection state IMMEDIATELY
+            isWebSocketConnectedRef.current = true;
+            
+            // ✅ CRITICAL: Stop polling IMMEDIATELY when WebSocket is connected
+            if (pollingInterval.current) {
+              logger.log('[WebSocket] 🛑🛑🛑 FORCE STOPPING polling - WebSocket is now primary');
+              clearInterval(pollingInterval.current);
+              pollingInterval.current = null;
+            } else {
+              logger.log('[WebSocket] ✅ No polling to stop - already stopped');
+            }
+            
+            // ✅ Double check: Ensure polling is stopped
+            if (pollingInterval.current) {
+              logger.log('[WebSocket] ⚠️ WARNING: Polling still active after stop attempt - force clearing');
+              clearInterval(pollingInterval.current);
+              pollingInterval.current = null;
+            }
+            
+            // ✅ Fetch initial status ONCE after WebSocket connection to get current state
+            // This is needed to populate initial data (participants, current_question, etc.)
+            // After this, we rely on WebSocket events only
+            logger.log('[WebSocket] Fetching initial status ONCE after connection');
+            initialFetchDoneRef.current = false; // Reset flag
+            fetchStatus(true); // Allow fetch even if WebSocket is connected (initial fetch)
+            
+            // ✅ Safety timeout: Stop loading after 3 seconds if no data received
+            // This prevents infinite loading if WebSocket events are delayed
+            setTimeout(() => {
+              if (loading) {
+                logger.log('[WebSocket] Safety timeout - stopping loading after 3 seconds');
+                setLoading(false);
+              }
+            }, 3000);
+          },
+          onDisconnected: () => {
+            logger.log('[WebSocket] ❌ Disconnected - starting polling fallback');
+            // Update WebSocket connection state
+            isWebSocketConnectedRef.current = false;
+            // Fallback to polling if WebSocket disconnects
+            if (!pollingInterval.current) {
+              logger.log('[Polling] Starting fallback polling after WebSocket disconnect');
+              startPolling();
+            }
+          },
+          onError: (error) => {
+            logger.error('[WebSocket] ❌ Error:', error);
+            // Update WebSocket connection state
+            isWebSocketConnectedRef.current = false;
+            // Fallback to polling on error
+            if (!pollingInterval.current) {
+              logger.log('[Polling] Starting fallback polling after WebSocket error');
+              startPolling();
+            }
+          },
+        });
+      } catch (error) {
+        logger.error('[WebSocket] ❌ Failed to connect, using polling fallback:', error);
+        logger.error('[WebSocket] Error details:', error instanceof Error ? error.message : String(error));
+        // Update WebSocket connection state
+        isWebSocketConnectedRef.current = false;
+        // Fallback to polling if WebSocket fails
+        // ✅ DO NOT fetch status immediately - wait for polling to start
+        // This prevents immediate API calls before polling is set up
+        logger.log('[Polling] WebSocket failed - will start polling after delay');
+        // Delay polling start to avoid immediate duplicate calls
+        // Give WebSocket more time to potentially reconnect
+        setTimeout(() => {
+          // Double check WebSocket status before starting polling
+          const wsConnected = isWebSocketConnectedRef.current || websocket.isConnected();
+          logger.log('[Polling] Checking WebSocket status after delay:', {
+            isWebSocketConnectedRef: isWebSocketConnectedRef.current,
+            websocketConnected: websocket.isConnected(),
+            wsConnected: wsConnected
+          });
+          if (!wsConnected) {
+            logger.log('[Polling] ⚠️ Starting fallback polling after WebSocket connection failure (5s delay)');
+            // Fetch status once when starting polling
+            fetchStatus();
+            startPolling();
+          } else {
+            logger.log('[Polling] ✅ WebSocket connected during delay - skipping polling');
+            isWebSocketConnectedRef.current = true; // Sync the ref
+            // Fetch status once after WebSocket connection
+            fetchStatus(true); // Allow fetch even if WebSocket is connected (initial fetch)
+          }
+        }, 5000); // Wait 5 seconds before starting polling (give WebSocket more time to connect)
+      }
+    };
+
+    // ✅ Try WebSocket connection immediately (no delay)
+    // This ensures WebSocket connects before any polling starts
+    console.log('[Multiplayer] 🚀 Starting WebSocket connection immediately for session:', sessionIdNum);
+    console.log('[Multiplayer] Current WebSocket state:', {
+      isWebSocketConnectedRef: isWebSocketConnectedRef.current,
+      websocketConnected: websocket.isConnected(),
+      pollingActive: !!pollingInterval.current
+    });
+    logger.log('[Multiplayer] 🚀 Starting WebSocket connection immediately for session:', sessionIdNum);
+    logger.log('[Multiplayer] Current WebSocket state:', {
+      isWebSocketConnectedRef: isWebSocketConnectedRef.current,
+      websocketConnected: websocket.isConnected(),
+      pollingActive: !!pollingInterval.current
+    });
+    tryWebSocket();
 
     return () => {
+      websocket.disconnect();
+      isWebSocketConnectedRef.current = false;
       if (pollingInterval.current) {
         clearInterval(pollingInterval.current);
+        pollingInterval.current = null;
+        logger.log('[Multiplayer] Cleanup: Stopped polling on unmount');
       }
       if (revealTimerRef.current) {
         clearInterval(revealTimerRef.current);
+        revealTimerRef.current = null;
       }
+      logger.log('[Multiplayer] Cleanup: Component unmounting');
     };
   }, [sessionIdNum]);
 
-  // Poll for question changes when waiting for next
+  // ✅ Monitor status changes - navigate to results when session completes
+  // Also check if current_question is null (means session completed even if status not updated)
   useEffect(() => {
-    if (readyForNext && !allReadyForNext && showReveal) {
+    if (status === 'completed') {
+      logger.log('[Multiplayer] ✅ Session status is completed - navigating to results');
+      console.log('[Multiplayer] ✅ Session status is completed - navigating to results');
+      router.replace({
+        pathname: '/multiplayer/results',
+        params: { sessionId: sessionIdNum.toString() }
+      });
+    } else if (status === 'in_progress' && currentQuestion === null && !loading) {
+      // ✅ CRITICAL: If status is 'in_progress' but current_question is null,
+      // this means session completed but status wasn't updated yet (race condition)
+      // Only check if not loading to avoid false positives during initial load
+      logger.log('[Multiplayer] ⚠️ Status is in_progress but current_question is null - session completed, navigating to results');
+      console.log('[Multiplayer] ⚠️ Status is in_progress but current_question is null - session completed, navigating to results');
+      router.replace({
+        pathname: '/multiplayer/results',
+        params: { sessionId: sessionIdNum.toString() }
+      });
+    }
+  }, [status, currentQuestion, loading, sessionIdNum, router]);
+
+  // ✅ NO POLLING - Rely on WebSocket events only
+  // WebSocket will send session.updated event when all participants are ready
+  // This will update all_ready_for_next and trigger next question transition
+  // Only use polling as fallback if WebSocket is not connected
+  useEffect(() => {
+    // Only use this polling if WebSocket is not connected (fallback only)
+    if (readyForNext && !allReadyForNext && showReveal && !isWebSocketConnectedRef.current) {
+      logger.log('[Polling] Starting fallback polling for next question (WebSocket not connected)');
       const checkInterval = setInterval(() => {
+        // ✅ Stop polling if WebSocket reconnects
+        if (isWebSocketConnectedRef.current) {
+          clearInterval(checkInterval);
+          logger.log('[Polling] Stopped fallback polling - WebSocket reconnected');
+          return;
+        }
         fetchStatus();
-      }, 800); // Check every 800ms for faster response
+      }, 5000); // ✅ Longer interval for fallback polling (5 seconds)
       
-      return () => clearInterval(checkInterval);
+      return () => {
+        clearInterval(checkInterval);
+        logger.log('[Polling] Stopped fallback polling for next question');
+      };
     }
   }, [readyForNext, allReadyForNext, showReveal]);
 
   useEffect(() => {
-    console.log('[COUNTDOWN DEBUG]', {
+    logger.log('[COUNTDOWN DEBUG]', {
       hasBothAnswered,
       showReveal,
       hasQuestion: !!currentQuestion,
@@ -182,25 +533,25 @@ export default function MultiplayerGameScreen() {
     if (hasBothAnswered && !showReveal && currentQuestion) {
       // ✅ CRITICAL: Prevent multiple timers
       if (revealTimerRef.current) {
-        console.log('[COUNTDOWN] Timer already running, clearing it');
+        logger.log('[COUNTDOWN] Timer already running, clearing it');
         clearInterval(revealTimerRef.current);
         revealTimerRef.current = null;
       }
       
       // ✅ CRITICAL: Double-check conditions before starting timer
       if (showReveal || countdownStartedRef.current) {
-        console.log('[COUNTDOWN] Skipping - showReveal or countdown already started');
+        logger.log('[COUNTDOWN] Skipping - showReveal or countdown already started');
         return;
       }
 
-      console.log('[COUNTDOWN] Starting countdown timer');
+      logger.log('[COUNTDOWN] Starting countdown timer');
       setRevealTimer(3);
       countdownStartedRef.current = true; // ✅ Lock hasBothAnswered during countdown
       hasBothAnsweredRef.current = true; // ✅ Update ref immediately
       
       // ✅ CRITICAL: Stop polling during countdown
       if (pollingInterval.current) {
-        console.log('[COUNTDOWN] Stopping polling during countdown');
+        logger.log('[COUNTDOWN] Stopping polling during countdown');
         clearInterval(pollingInterval.current);
         pollingInterval.current = null;
       }
@@ -208,7 +559,7 @@ export default function MultiplayerGameScreen() {
       revealTimerRef.current = setInterval(() => {
         // ✅ CRITICAL: Use refs to get current values (avoid stale closures)
         if (showRevealRef.current || !hasBothAnsweredRef.current) {
-          console.log('[COUNTDOWN] Timer stopped - conditions changed', {
+          logger.log('[COUNTDOWN] Timer stopped - conditions changed', {
             showReveal: showRevealRef.current,
             hasBothAnswered: hasBothAnsweredRef.current
           });
@@ -217,17 +568,18 @@ export default function MultiplayerGameScreen() {
             revealTimerRef.current = null;
           }
           countdownStartedRef.current = false;
-          // Resume polling if countdown stopped
-          if (!pollingInterval.current) {
+          // ✅ Resume polling if countdown stopped (only if WebSocket not connected)
+          if (!isWebSocketConnectedRef.current && !pollingInterval.current) {
+            logger.log('[COUNTDOWN] Resuming fallback polling after countdown stopped');
             startPolling();
           }
           return;
         }
 
         setRevealTimer((prev) => {
-          console.log('[COUNTDOWN] Timer tick:', prev);
+          logger.log('[COUNTDOWN] Timer tick:', prev);
           if (prev <= 1) {
-            console.log('[COUNTDOWN] Countdown complete, calling handleReveal');
+            logger.log('[COUNTDOWN] Countdown complete, calling handleReveal');
             if (revealTimerRef.current) {
               clearInterval(revealTimerRef.current);
               revealTimerRef.current = null;
@@ -242,7 +594,7 @@ export default function MultiplayerGameScreen() {
     } else if (!hasBothAnswered || showReveal) {
       // ✅ CRITICAL: Clear timer if conditions change
       if (revealTimerRef.current) {
-        console.log('[COUNTDOWN] Clearing timer - conditions changed', {
+        logger.log('[COUNTDOWN] Clearing timer - conditions changed', {
           hasBothAnswered,
           showReveal
         });
@@ -260,7 +612,53 @@ export default function MultiplayerGameScreen() {
     };
   }, [hasBothAnswered, showReveal, currentQuestion]);
 
-  const fetchStatus = async () => {
+  const fetchStatus = async (allowIfWebSocketConnected: boolean = false) => {
+    // ✅ CRITICAL: Check WebSocket connection BEFORE fetching
+    // If WebSocket is connected, stop polling immediately
+    if (isWebSocketConnectedRef.current || websocket.isConnected()) {
+      if (pollingInterval.current) {
+        logger.log('[FETCH STATUS] ⚠️⚠️⚠️ WebSocket connected but polling active - FORCE STOPPING polling');
+        clearInterval(pollingInterval.current);
+        pollingInterval.current = null;
+      }
+      
+      // ✅ Allow fetchStatus ONCE after WebSocket connection (for initial state)
+      // After that, rely on WebSocket events only
+      if (!allowIfWebSocketConnected && initialFetchDoneRef.current) {
+        logger.log('[FETCH STATUS] ⚠️ Skipping fetch - WebSocket is connected, relying on WebSocket events');
+        return;
+      }
+      
+      // Mark initial fetch as done
+      if (allowIfWebSocketConnected) {
+        initialFetchDoneRef.current = true;
+        logger.log('[FETCH STATUS] ✅ Allowing initial fetch after WebSocket connection');
+      }
+    }
+    
+    // ✅ ALWAYS log who called fetchStatus (for debugging) - to track polling source
+    const stack = new Error().stack || '';
+    const stackLines = stack.split('\n');
+    const caller = stackLines.length > 2 ? stackLines[2]?.trim() || 'unknown' : 'unknown';
+    console.log('[FETCH STATUS] 🔄 Called from:', caller);
+    console.log('[FETCH STATUS] Full stack:', stackLines.slice(0, 5).join('\n'));
+    console.log('[FETCH STATUS] State:', {
+      isWebSocketConnected: isWebSocketConnectedRef.current,
+      websocketConnected: websocket.isConnected(),
+      pollingActive: !!pollingInterval.current,
+      allowIfWebSocketConnected: allowIfWebSocketConnected,
+      sessionIdNum: sessionIdNum
+    });
+    logger.log('[FETCH STATUS] 🔄 Called from:', caller);
+    logger.log('[FETCH STATUS] Full stack:', stackLines.slice(0, 5).join('\n'));
+    logger.log('[FETCH STATUS] State:', {
+      isWebSocketConnected: isWebSocketConnectedRef.current,
+      websocketConnected: websocket.isConnected(),
+      pollingActive: !!pollingInterval.current,
+      allowIfWebSocketConnected: allowIfWebSocketConnected,
+      sessionIdNum: sessionIdNum
+    });
+    
     try {
       const response = await api.get<{
         ok: boolean;
@@ -359,7 +757,7 @@ export default function MultiplayerGameScreen() {
           const currentQuestionId = currentQuestion?.id;
           // If question ID changed but questionChanged wasn't detected, force reset
           if (currentQuestionId !== null && currentQuestionId !== newQuestionId) {
-            console.log('Force reset: Question ID changed but not detected');
+            logger.log('Force reset: Question ID changed but not detected');
             setReadyForNext(false);
             setShowReveal(false);
             setResponses([]);
@@ -410,7 +808,7 @@ export default function MultiplayerGameScreen() {
             // ✅ CRITICAL: Before reveal, readyForNext must be false
             // This ensures "التالي" button appears after reveal
             if (readyForNext) {
-              console.log('[FETCH STATUS] Resetting readyForNext to false - reveal not shown yet');
+              logger.log('[FETCH STATUS] Resetting readyForNext to false - reveal not shown yet');
               setReadyForNext(false);
             }
           }
@@ -432,7 +830,7 @@ export default function MultiplayerGameScreen() {
             // Only sync hasAnswered from server if user answered on different device (very rare)
             const serverHasAnswered = response.data.has_current_user_answered;
             if (serverHasAnswered && !hasAnswered) {
-              console.log('[FETCH STATUS] User answered on another device - syncing hasAnswered from server', {
+              logger.log('[FETCH STATUS] User answered on another device - syncing hasAnswered from server', {
                 serverHasAnswered
               });
               setHasAnswered(true);
@@ -445,7 +843,7 @@ export default function MultiplayerGameScreen() {
             // ✅ CRITICAL: User has submitted answer locally - IGNORE ALL server updates for hasAnswered/selectedOption
             // BUT: We MUST still allow hasBothAnswered to update from server
             // This is the ABSOLUTE lock - once user submits answer, fetchStatus CANNOT change it
-            console.log('[FETCH STATUS] User has submitted answer locally - protecting local answer, but allowing hasBothAnswered update', {
+            logger.log('[FETCH STATUS] User has submitted answer locally - protecting local answer, but allowing hasBothAnswered update', {
               hasAnswered,
               hasAnsweredRef: hasAnsweredRef.current,
               selectedOption,
@@ -471,7 +869,7 @@ export default function MultiplayerGameScreen() {
             // ✅ ALWAYS update to true if server says both answered
             // This ensures countdown starts immediately for both users (synchronized)
             if (!hasBothAnswered) {
-              console.log('[FETCH STATUS] Updating hasBothAnswered to true (both users answered - starting countdown)', {
+              logger.log('[FETCH STATUS] Updating hasBothAnswered to true (both users answered - starting countdown)', {
                 serverHasBothAnswered,
                 localHasBothAnswered: hasBothAnswered,
                 hasAnswered,
@@ -483,7 +881,7 @@ export default function MultiplayerGameScreen() {
               // ✅ CRITICAL: If user already answered, lock their answer (can't change anymore)
               // This prevents user from changing answer after other user has answered
               if (hasAnswered) {
-                console.log('[FETCH STATUS] Locking user answer - other user has answered');
+                logger.log('[FETCH STATUS] Locking user answer - other user has answered');
               }
             } else {
               // Already true, just ensure ref is updated (countdown should have started)
@@ -496,7 +894,7 @@ export default function MultiplayerGameScreen() {
           } else if (hasBothAnswered && !serverHasBothAnswered && !countdownStartedRef.current) {
             // ✅ Only reset to false if countdown hasn't started
             // If countdown started, keep it as true to prevent disruption
-            console.log('[FETCH STATUS] Server says not both answered, but keeping true during countdown', {
+            logger.log('[FETCH STATUS] Server says not both answered, but keeping true during countdown', {
               serverHasBothAnswered,
               localHasBothAnswered: hasBothAnswered,
               countdownStarted: countdownStartedRef.current
@@ -504,9 +902,9 @@ export default function MultiplayerGameScreen() {
           }
         } else {
           if (countdownStartedRef.current) {
-            console.log('[FETCH STATUS] Skipping hasBothAnswered update - countdown in progress');
+            logger.log('[FETCH STATUS] Skipping hasBothAnswered update - countdown in progress');
           } else if (showReveal) {
-            console.log('[FETCH STATUS] Skipping hasBothAnswered update - reveal in progress');
+            logger.log('[FETCH STATUS] Skipping hasBothAnswered update - reveal in progress');
           }
         }
         
@@ -525,7 +923,7 @@ export default function MultiplayerGameScreen() {
           const currentQuestionId = currentQuestion.id;
           // If question ID changed but questionChanged wasn't detected, force reset
           if (currentQuestionId !== newQuestionId && !questionChanged) {
-            console.log('Force reset: Question ID changed but not detected by question_order');
+            logger.log('Force reset: Question ID changed but not detected by question_order');
             setReadyForNext(false);
             setAllReadyForNext(false);
             setShowReveal(false);
@@ -561,12 +959,12 @@ export default function MultiplayerGameScreen() {
         }
       }
     } catch (error: any) {
-      console.error('Error fetching status:', error);
+      logger.error('Error fetching status:', error);
       // ✅ Don't reset states on network error - keep current state
       // Network errors are temporary and shouldn't affect game state
       // Only log the error, don't throw or reset anything
       if (error?.message?.includes('Network request failed')) {
-        console.log('[FETCH STATUS] Network error - will retry on next poll');
+        logger.log('[FETCH STATUS] Network error - will retry on next poll');
       }
     } finally {
       setLoading(false);
@@ -574,21 +972,80 @@ export default function MultiplayerGameScreen() {
   };
 
   const startPolling = () => {
-    if (pollingInterval.current) {
-      clearInterval(pollingInterval.current);
+    // ✅ CRITICAL: Only start polling if WebSocket is NOT connected (fallback only)
+    if (isWebSocketConnectedRef.current) {
+      logger.log('[Polling] ⚠️ Cannot start polling - WebSocket is connected (isWebSocketConnectedRef.current = true)');
+      return;
     }
+    
+    // ✅ Double check: Also verify WebSocket connection status directly
+    if (websocket.isConnected()) {
+      logger.log('[Polling] ⚠️ Cannot start polling - WebSocket is connected (websocket.isConnected() = true)');
+      isWebSocketConnectedRef.current = true; // Sync the ref
+      return;
+    }
+    
+    // ✅ Stop any existing polling
+    if (pollingInterval.current) {
+      logger.log('[Polling] Stopping existing polling before starting new one');
+      clearInterval(pollingInterval.current);
+      pollingInterval.current = null;
+    }
+    
+    // ✅ Adaptive polling interval based on session status
+    // Longer interval for fallback polling (less frequent updates needed)
+    const getPollingInterval = () => {
+      if (status === 'waiting') {
+        return 8000; // 8 seconds for waiting status (fallback only)
+      }
+      return 5000; // 5 seconds for active game (fallback only)
+    };
+    
+    const pollingIntervalMs = getPollingInterval();
+    logger.log('[Polling] 🔄 Starting FALLBACK polling with interval:', pollingIntervalMs, 'ms', {
+      isWebSocketConnected: isWebSocketConnectedRef.current,
+      websocketConnected: websocket.isConnected(),
+      status: status
+    });
+    
     pollingInterval.current = setInterval(() => {
+      // ✅ CRITICAL: Check WebSocket connection status FIRST in every poll
+      if (isWebSocketConnectedRef.current || websocket.isConnected()) {
+        logger.log('[Polling] ✅✅✅ WebSocket connected - IMMEDIATELY stopping fallback polling');
+        if (pollingInterval.current) {
+          clearInterval(pollingInterval.current);
+          pollingInterval.current = null;
+        }
+        isWebSocketConnectedRef.current = true; // Sync the ref
+        return;
+      }
+      
       // ✅ CRITICAL: Stop polling during countdown, reveal, OR if user has selected an option
       // Once user selects an option, stop polling to prevent interference
-      // We'll resume polling after user submits answer to check for has_both_answered
       if (countdownStartedRef.current || showRevealRef.current || selectedOptionRef.current !== null) {
         return; // Skip polling if user has selected an option (even if not submitted yet)
       }
       
       // ✅ Only poll if user hasn't selected an option yet
       // After user selects, we stop polling until they submit (then resume to check has_both_answered)
+      logger.log('[Polling] 🔄 Fallback polling - fetching status (WebSocket NOT connected)', {
+        isWebSocketConnectedRef: isWebSocketConnectedRef.current,
+        websocketConnected: websocket.isConnected()
+      });
+      
+      // ✅ CRITICAL: Check if WebSocket connected before fetching
+      if (isWebSocketConnectedRef.current || websocket.isConnected()) {
+        logger.log('[Polling] ⚠️⚠️⚠️ WebSocket connected during polling - STOPPING polling immediately');
+        if (pollingInterval.current) {
+          clearInterval(pollingInterval.current);
+          pollingInterval.current = null;
+        }
+        isWebSocketConnectedRef.current = true;
+        return;
+      }
+      
       fetchStatus();
-    }, 3000); // Check every 3 seconds - less frequent to reduce API calls
+    }, pollingIntervalMs);
   };
 
   // ✅ NEW: Handle option selection (temporary - user can change)
@@ -597,7 +1054,7 @@ export default function MultiplayerGameScreen() {
     
     // ✅ Allow selection only if user hasn't submitted final answer
     if (hasAnsweredRef.current || hasAnswered || showReveal) {
-      console.log('[OPTION SELECT] Blocked - answer already submitted');
+      logger.log('[OPTION SELECT] Blocked - answer already submitted');
       return;
     }
     
@@ -608,13 +1065,13 @@ export default function MultiplayerGameScreen() {
     // ✅ CRITICAL: Stop polling immediately when user selects an option
     // This prevents fetchStatus from interfering with the selection
     if (pollingInterval.current) {
-      console.log('[OPTION SELECT] Stopping polling after user selected option');
+      logger.log('[OPTION SELECT] Stopping polling after user selected option');
       clearInterval(pollingInterval.current);
       pollingInterval.current = null;
     }
     
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    console.log('[OPTION SELECT] User selected option:', optionId);
+    logger.log('[OPTION SELECT] User selected option:', optionId);
   };
 
   // ✅ MODIFIED: Submit final answer (called from "إرسال الإجابة" button)
@@ -624,7 +1081,7 @@ export default function MultiplayerGameScreen() {
     // ✅ CRITICAL: Triple-layer protection against multiple submissions
     // Check BOTH ref and state for immediate blocking (before ANY state updates)
     if (hasAnsweredRef.current || hasAnswered || isSubmittingRef.current || isSubmitting) {
-      console.log('[HANDLE ANSWER] Blocked - user already answered or submission in progress', {
+      logger.log('[HANDLE ANSWER] Blocked - user already answered or submission in progress', {
         hasAnsweredRef: hasAnsweredRef.current,
         hasAnswered,
         isSubmittingRef: isSubmittingRef.current,
@@ -663,10 +1120,10 @@ export default function MultiplayerGameScreen() {
         selected_option_id: optionId,
       });
       
-      console.log('[HANDLE ANSWER] Submitted answer:', optionId);
+      logger.log('[HANDLE ANSWER] Submitted answer:', optionId);
 
       if (response && response.ok && response.data) {
-        console.log('[HANDLE ANSWER] Response received', {
+        logger.log('[HANDLE ANSWER] Response received', {
           has_both_answered: response.data.has_both_answered,
           showReveal,
           currentHasBothAnswered: hasBothAnswered
@@ -676,7 +1133,7 @@ export default function MultiplayerGameScreen() {
         // handleAnswer is the authoritative source when user submits answer
         if (!showReveal) {
           const shouldSetBothAnswered = response.data.has_both_answered;
-          console.log('[HANDLE ANSWER] Setting hasBothAnswered to', shouldSetBothAnswered, {
+          logger.log('[HANDLE ANSWER] Setting hasBothAnswered to', shouldSetBothAnswered, {
             currentHasBothAnswered: hasBothAnswered,
             countdownStarted: countdownStartedRef.current
           });
@@ -688,7 +1145,7 @@ export default function MultiplayerGameScreen() {
             // Server says both answered - always set to true
             setHasBothAnswered(true);
             hasBothAnsweredRef.current = true;
-            console.log('[HANDLE ANSWER] Setting hasBothAnswered to true - both users answered');
+            logger.log('[HANDLE ANSWER] Setting hasBothAnswered to true - both users answered');
           } else if (!hasBothAnswered) {
             // Server says not both answered AND local is false - safe to keep false
             setHasBothAnswered(false);
@@ -698,7 +1155,7 @@ export default function MultiplayerGameScreen() {
             // This means user changed answer after other user already answered
             // Keep local state as true - don't reset to false
             // This ensures countdown continues and answer is locked
-            console.log('[HANDLE ANSWER] Keeping hasBothAnswered as true - answer is locked', {
+            logger.log('[HANDLE ANSWER] Keeping hasBothAnswered as true - answer is locked', {
               serverHasBothAnswered: shouldSetBothAnswered,
               localHasBothAnswered: hasBothAnswered
             });
@@ -708,12 +1165,12 @@ export default function MultiplayerGameScreen() {
           // ✅ CRITICAL: Mark that hasBothAnswered was set by handleAnswer
           if (shouldSetBothAnswered || hasBothAnswered) {
             hasBothAnsweredFromAnswerRef.current = true;
-            console.log('[HANDLE ANSWER] Marked hasBothAnsweredFromAnswerRef = true');
+            logger.log('[HANDLE ANSWER] Marked hasBothAnsweredFromAnswerRef = true');
           } else {
             hasBothAnsweredFromAnswerRef.current = false;
           }
         } else {
-          console.log('[HANDLE ANSWER] Skipping update - showReveal is true');
+          logger.log('[HANDLE ANSWER] Skipping update - showReveal is true');
         }
       }
       
@@ -721,22 +1178,30 @@ export default function MultiplayerGameScreen() {
       isSubmittingRef.current = false;
       setIsSubmitting(false);
       
-      // ✅ CRITICAL: Resume polling after submitting answer (only if both haven't answered)
-      // This checks for has_both_answered so countdown can start simultaneously
-      // fetchStatus is protected and won't change hasAnswered/selectedOption
-      if (!response.data.has_both_answered && !pollingInterval.current) {
-        console.log('[HANDLE ANSWER] Starting polling to check for other user answer');
-        // Start limited polling - only checks for has_both_answered
-        pollingInterval.current = setInterval(() => {
-          // ✅ Only poll if not in countdown or reveal
-          if (countdownStartedRef.current || showRevealRef.current) {
-            return;
-          }
-          fetchStatus();
-        }, 2000); // Check every 2 seconds for faster has_both_answered detection
-      } else if (response.data.has_both_answered) {
-        // Both answered - countdown will start via useEffect immediately
-        console.log('[HANDLE ANSWER] Both users answered - countdown will start');
+      // ✅ NO POLLING - Rely on WebSocket events only
+      // WebSocket will send session.updated event when other user answers
+      // This will trigger has_both_answered update and countdown start
+      if (response.data.has_both_answered) {
+        logger.log('[HANDLE ANSWER] Both users answered - countdown will start via WebSocket');
+      } else {
+        logger.log('[HANDLE ANSWER] Waiting for other user - WebSocket will notify when they answer');
+        // ✅ Only start polling if WebSocket is NOT connected (fallback only)
+        if (!isWebSocketConnectedRef.current && !pollingInterval.current) {
+          logger.log('[HANDLE ANSWER] WebSocket not connected - starting fallback polling');
+          pollingInterval.current = setInterval(() => {
+            // ✅ Only poll if not in countdown or reveal
+            if (countdownStartedRef.current || showRevealRef.current) {
+              return;
+            }
+            // ✅ Stop polling if WebSocket reconnects
+            if (isWebSocketConnectedRef.current) {
+              clearInterval(pollingInterval.current!);
+              pollingInterval.current = null;
+              return;
+            }
+            fetchStatus();
+          }, 5000); // Longer interval for fallback polling (5 seconds)
+        }
       }
     } catch (error: any) {
       Alert.alert('خطأ', error.message || 'فشل إرسال الإجابة');
@@ -752,11 +1217,11 @@ export default function MultiplayerGameScreen() {
 
   const handleReveal = async () => {
     if (!currentQuestion || showReveal) {
-      console.log('[HANDLE REVEAL] Skipping - no question or already revealed');
+      logger.log('[HANDLE REVEAL] Skipping - no question or already revealed');
       return;
     }
 
-    console.log('[HANDLE REVEAL] Starting reveal');
+    logger.log('[HANDLE REVEAL] Starting reveal');
 
     // ✅ CRITICAL: Clear the reveal timer to prevent multiple calls
     if (revealTimerRef.current) {
@@ -773,12 +1238,17 @@ export default function MultiplayerGameScreen() {
     // ✅ CRITICAL: Ensure readyForNext is false when reveal starts
     // This ensures "التالي" button appears immediately after reveal
     if (readyForNext) {
-      console.log('[HANDLE REVEAL] Resetting readyForNext to false to show next button');
+      logger.log('[HANDLE REVEAL] Resetting readyForNext to false to show next button');
       setReadyForNext(false);
     }
     
-    // ✅ Resume polling after reveal starts (to check for readyForNext and next question)
-    if (!pollingInterval.current) {
+    // ✅ NO POLLING - Rely on WebSocket events only
+    // WebSocket will send session.updated and participant.ready events
+    // These will update all_ready_for_next and trigger next question transition
+    logger.log('[HANDLE REVEAL] Waiting for WebSocket events for next question');
+    // ✅ Only start polling if WebSocket is NOT connected (fallback only)
+    if (!isWebSocketConnectedRef.current && !pollingInterval.current) {
+      logger.log('[HANDLE REVEAL] WebSocket not connected - starting fallback polling');
       startPolling();
     }
 
@@ -895,10 +1365,10 @@ export default function MultiplayerGameScreen() {
     );
   }
 
-  const myResponse = responses.find((r) => r.user_id === currentUserId);
-  const otherResponse = responses.find((r) => r.user_id !== currentUserId);
-  const myParticipant = participants.find((p) => p.user_id === currentUserId);
-  const otherParticipant = participants.find((p) => p.user_id !== currentUserId);
+  const myResponse = (responses || []).find((r) => r.user_id === currentUserId);
+  const otherResponse = (responses || []).find((r) => r.user_id !== currentUserId);
+  const myParticipant = (participants || []).find((p) => p.user_id === currentUserId);
+  const otherParticipant = (participants || []).find((p) => p.user_id !== currentUserId);
 
   return (
     <GradientBackground colors={colors.gradient}>

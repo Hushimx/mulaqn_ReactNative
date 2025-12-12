@@ -14,6 +14,8 @@ import { GradientBackground } from '@/components/ui/GradientBackground';
 import { getTrackColors } from '@/contexts/TrackContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { api, API_ENDPOINTS } from '@/utils/api';
+import { websocket } from '@/utils/websocket';
+import { logger } from '@/utils/logger';
 import Animated, { FadeInUp, FadeInDown, withRepeat, withTiming, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 
@@ -34,6 +36,8 @@ export default function MultiplayerReadyScreen() {
   const pollingInterval = useRef<NodeJS.Timeout | null>(null);
   const hasNavigated = useRef(false); // Prevent multiple navigations
   const gameStartTimeout = useRef<NodeJS.Timeout | null>(null);
+  const isWebSocketConnectedRef = useRef(false); // ✅ Track WebSocket connection state
+  const initialFetchDoneRef = useRef(false); // ✅ Track if initial fetch is done
 
   const sessionIdNum = parseInt(sessionId || '0');
   const colors = getTrackColors(1) || {
@@ -57,20 +61,202 @@ export default function MultiplayerReadyScreen() {
   }));
 
   useEffect(() => {
+    logger.log('[READY] 🎯 useEffect triggered for session:', sessionIdNum);
+    
+    if (!sessionIdNum || sessionIdNum <= 0) {
+      logger.error('[READY] ❌ Invalid sessionIdNum:', sessionIdNum);
+      return;
+    }
+
+    // ✅ Try WebSocket first, fallback to polling
+    const tryWebSocket = async () => {
+      logger.log('[READY] 🔌 Attempting WebSocket connection for session:', sessionIdNum);
+      
+      // ✅ CRITICAL: Stop any existing polling BEFORE attempting WebSocket
+      if (pollingInterval.current) {
+        logger.log('[READY] 🛑 Stopping existing polling before WebSocket attempt');
+        clearInterval(pollingInterval.current);
+        pollingInterval.current = null;
+      }
+      
+      // ✅ Ensure WebSocket state is reset
+      isWebSocketConnectedRef.current = false;
+      initialFetchDoneRef.current = false;
+      
+      try {
+        await websocket.connect(sessionIdNum, {
+          onSessionUpdated: (data) => {
+            logger.log('[READY] 📨 Session updated via WebSocket:', data);
+            const eventData = data.data || data;
+            
+            // ✅ Update state from WebSocket data
+            if (eventData.participants) {
+              setParticipants(eventData.participants);
+              
+              // Check if current user is ready
+              const userReady = eventData.participants.find((p: Participant) => p.is_ready);
+              setIsReady(!!userReady);
+              
+              // Check if all participants are ready
+              const allReadyCheck = eventData.participants.length === 2 && 
+                                   eventData.participants.every((p: Participant) => p.is_ready);
+              setAllReady(allReadyCheck);
+              
+              logger.log('[READY] Participants updated via WebSocket:', eventData.participants.length, 'allReady:', allReadyCheck);
+            }
+            
+            // ✅ Handle navigation based on status
+            if (eventData.status === 'in_progress' && !hasNavigated.current) {
+              handleGameStart();
+            }
+            
+            if (eventData.status === 'cancelled') {
+              router.replace({
+                pathname: '/multiplayer/disconnected',
+                params: { reason: 'left', sessionId: sessionIdNum.toString() }
+              });
+            }
+          },
+          onParticipantReady: (data) => {
+            logger.log('[READY] 📨 Participant ready via WebSocket:', data);
+            const eventData = data.data || data;
+            
+            // ✅ Update all_ready state
+            if (eventData.all_ready !== undefined) {
+              setAllReady(eventData.all_ready);
+              logger.log('[READY] All ready updated via WebSocket:', eventData.all_ready);
+            }
+          },
+          onConnected: () => {
+            logger.log('[READY] ✅ WebSocket connected');
+            isWebSocketConnectedRef.current = true;
+            
+            // ✅ Stop polling if active
+            if (pollingInterval.current) {
+              logger.log('[READY] ✅ Stopping polling - WebSocket connected');
+              clearInterval(pollingInterval.current);
+              pollingInterval.current = null;
+            }
+            
+            // ✅ Fetch initial status once after WebSocket connection
+            if (!initialFetchDoneRef.current) {
+              initialFetchDoneRef.current = true;
+              fetchStatus(true); // Allow fetch even if WebSocket is connected (initial fetch)
+            }
+          },
+          onDisconnected: () => {
+            logger.log('[READY] ⚠️ WebSocket disconnected');
+            isWebSocketConnectedRef.current = false;
+            
+            // ✅ Start polling fallback after delay
+            setTimeout(() => {
+              if (!isWebSocketConnectedRef.current && !pollingInterval.current) {
+                logger.log('[READY] 🔄 Starting polling fallback (WebSocket disconnected)');
+                startPolling();
+              }
+            }, 2000);
+          },
+          onError: (error) => {
+            logger.error('[READY] ❌ WebSocket error:', error);
+            isWebSocketConnectedRef.current = false;
+            
+            // ✅ Start polling fallback after delay
+            setTimeout(() => {
+              if (!isWebSocketConnectedRef.current && !pollingInterval.current) {
+                logger.log('[READY] 🔄 Starting polling fallback (WebSocket error)');
+                startPolling();
+              }
+            }, 2000);
+          },
+        });
+      } catch (error) {
+        logger.error('[READY] ❌ WebSocket connection failed:', error);
+        isWebSocketConnectedRef.current = false;
+        
+        // ✅ Start polling fallback after delay
+        setTimeout(() => {
+          if (!isWebSocketConnectedRef.current && !pollingInterval.current) {
+            logger.log('[READY] 🔄 Starting polling fallback (WebSocket connection failed)');
+            startPolling();
+          }
+        }, 2000);
+      }
+    };
+
+    // ✅ Try WebSocket connection immediately
+    tryWebSocket();
+    
+    // ✅ Initial fetch (will be skipped if WebSocket connects quickly)
     fetchStatus();
-    startPolling();
 
     return () => {
+      logger.log('[READY] Cleanup: Disconnecting WebSocket and stopping polling');
+      websocket.disconnect();
+      isWebSocketConnectedRef.current = false;
       if (pollingInterval.current) {
         clearInterval(pollingInterval.current);
+        pollingInterval.current = null;
       }
       if (gameStartTimeout.current) {
         clearTimeout(gameStartTimeout.current);
+        gameStartTimeout.current = null;
       }
     };
   }, [sessionIdNum]);
 
-  const fetchStatus = async () => {
+  // ✅ Helper function to handle game start
+  const handleGameStart = () => {
+    if (hasNavigated.current) return;
+    
+    hasNavigated.current = true;
+    
+    // Clear any pending timeouts
+    if (gameStartTimeout.current) {
+      clearTimeout(gameStartTimeout.current);
+      gameStartTimeout.current = null;
+    }
+    
+    // Stop polling
+    if (pollingInterval.current) {
+      clearInterval(pollingInterval.current);
+      pollingInterval.current = null;
+    }
+    
+    // Navigate to game after short delay
+    setTimeout(() => {
+      logger.log('[READY] ✅ Navigating to game');
+      router.replace({
+        pathname: '/multiplayer/game',
+        params: { sessionId: sessionIdNum.toString() }
+      });
+    }, 1000); // Shorter delay since WebSocket is real-time
+  };
+
+  const fetchStatus = async (allowIfWebSocketConnected: boolean = false) => {
+    // ✅ CRITICAL: Check WebSocket connection BEFORE fetching
+    // If WebSocket is connected, stop polling immediately
+    if (isWebSocketConnectedRef.current || websocket.isConnected()) {
+      if (pollingInterval.current) {
+        logger.log('[READY] ⚠️ WebSocket connected but polling active - FORCE STOPPING polling');
+        clearInterval(pollingInterval.current);
+        pollingInterval.current = null;
+      }
+      
+      // ✅ Allow fetchStatus ONCE after WebSocket connection (for initial state)
+      // After that, rely on WebSocket events only
+      if (!allowIfWebSocketConnected && initialFetchDoneRef.current) {
+        logger.log('[READY] ⚠️ Skipping fetch - WebSocket is connected, relying on WebSocket events');
+        return;
+      }
+      
+      // Mark initial fetch as done
+      if (allowIfWebSocketConnected) {
+        initialFetchDoneRef.current = true;
+        logger.log('[READY] ✅ Allowing initial fetch after WebSocket connection');
+      }
+    }
+    
+    logger.log('[READY] 🔄 fetchStatus called for session:', sessionIdNum);
     try {
       const response = await api.get<{
         ok: boolean;
@@ -97,38 +283,16 @@ export default function MultiplayerReadyScreen() {
           gameStartTimeout.current = setTimeout(async () => {
             try {
               await api.post(API_ENDPOINTS.MULTIPLAYER_READY(sessionIdNum));
-              // Wait a bit then check status again
-              setTimeout(() => {
-                fetchStatus();
-              }, 500);
+              // WebSocket will handle the status update, no need to fetch again
             } catch (error) {
-              console.error('Error starting game:', error);
+              logger.error('[READY] Error starting game:', error);
             }
           }, 3000); // Wait 3 seconds before starting
         }
 
-        // If both ready, wait a bit before navigating to game (give users time to read)
+        // If both ready, navigate to game
         if (response.data.status === 'in_progress' && !hasNavigated.current) {
-          hasNavigated.current = true;
-          
-          // Clear any pending timeouts
-          if (gameStartTimeout.current) {
-            clearTimeout(gameStartTimeout.current);
-            gameStartTimeout.current = null;
-          }
-          
-          // Stop polling
-          if (pollingInterval.current) {
-            clearInterval(pollingInterval.current);
-            pollingInterval.current = null;
-          }
-          
-          setTimeout(() => {
-            router.replace({
-              pathname: '/multiplayer/game',
-              params: { sessionId: sessionIdNum.toString() }
-            });
-          }, 3000); // Wait 3 seconds before navigating
+          handleGameStart();
         }
 
         // If session cancelled
@@ -145,9 +309,40 @@ export default function MultiplayerReadyScreen() {
   };
 
   const startPolling = () => {
+    // ✅ CRITICAL: Only start polling if WebSocket is NOT connected (fallback only)
+    if (isWebSocketConnectedRef.current) {
+      logger.log('[READY] ⚠️ Cannot start polling - WebSocket is connected');
+      return;
+    }
+    if (websocket.isConnected()) {
+      logger.log('[READY] ⚠️ Cannot start polling - WebSocket is connected');
+      isWebSocketConnectedRef.current = true; // Sync the ref
+      return;
+    }
+    
+    // ✅ Stop any existing polling before starting new one
+    if (pollingInterval.current) {
+      logger.log('[READY] Stopping existing polling before starting new one');
+      clearInterval(pollingInterval.current);
+      pollingInterval.current = null;
+    }
+    
+    logger.log('[READY] 🔄 Starting FALLBACK polling with interval: 3000ms (WebSocket NOT connected)');
     pollingInterval.current = setInterval(() => {
+      // ✅ CRITICAL: Stop polling if WebSocket reconnects
+      if (isWebSocketConnectedRef.current || websocket.isConnected()) {
+        logger.log('[READY] ✅✅✅ WebSocket connected - IMMEDIATELY stopping fallback polling');
+        if (pollingInterval.current) {
+          clearInterval(pollingInterval.current);
+          pollingInterval.current = null;
+        }
+        isWebSocketConnectedRef.current = true; // Sync the ref
+        return;
+      }
+      
+      logger.log('[READY] 🔄 Fallback polling - fetching status (WebSocket NOT connected)');
       fetchStatus();
-    }, 1500);
+    }, 3000); // ✅ Longer interval for fallback polling (3 seconds)
   };
 
   const handleReady = async () => {

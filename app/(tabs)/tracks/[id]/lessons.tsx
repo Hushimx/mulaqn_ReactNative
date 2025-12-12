@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   StyleSheet,
   SafeAreaView,
@@ -26,6 +26,7 @@ import { GradientBackground } from '@/components/ui/GradientBackground';
 import { useTrack, getTrackColors } from '@/contexts/TrackContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { api, API_ENDPOINTS } from '@/utils/api';
+import { logger } from '@/utils/logger';
 import { SkeletonLoader } from '@/components/ui/SkeletonLoader';
 import { SubscriptionRequiredScreen } from '@/components/SubscriptionRequiredScreen';
 
@@ -121,7 +122,7 @@ export default function LessonsListScreen() {
         setHasSubscription(false);
       }
     } catch (err) {
-      console.error('Error checking subscription:', err);
+      logger.error('Error checking subscription:', err);
       setHasSubscription(false);
     } finally {
       setCheckingSubscription(false);
@@ -137,7 +138,7 @@ export default function LessonsListScreen() {
         setTrack(trackResponse.data);
       }
     } catch (err) {
-      console.error('Error fetching track:', err);
+      logger.error('Error fetching track:', err);
     }
   };
 
@@ -153,7 +154,7 @@ export default function LessonsListScreen() {
       if (response && response.ok && response.data) {
         // Log for debugging
         const bookmarkedLessons = response.data.filter(l => l.bookmark?.bookmarked);
-        console.log(`[Lessons] Loaded ${response.data.length} lessons, ${bookmarkedLessons.length} bookmarked`);
+        logger.log(`[Lessons] Loaded ${response.data.length} lessons, ${bookmarkedLessons.length} bookmarked`);
         
         // ترتيب الدروس: المثبتة/المحفوظة أولاً، ثم حسب الترتيب
         // المثبت = محفوظ (نفس التأثيرات)
@@ -167,7 +168,7 @@ export default function LessonsListScreen() {
         setLessons(sortedLessons);
       }
     } catch (err: any) {
-      console.error('Error fetching lessons:', err);
+      logger.error('Error fetching lessons:', err);
       if (err?.message?.includes('NO_SUBSCRIPTION') || err?.message?.includes('403')) {
         setHasSubscription(false);
       } else {
@@ -178,11 +179,11 @@ export default function LessonsListScreen() {
     }
   };
 
-  const handleLessonPress = (lesson: Lesson) => {
+  const handleLessonPress = useCallback((lesson: Lesson) => {
     router.push(`/lessons/${lesson.id}`);
-  };
+  }, [router]);
 
-  const handleTogglePin = async (lesson: Lesson, e: any) => {
+  const handleTogglePin = useCallback(async (lesson: Lesson, e: any) => {
     e.stopPropagation();
     try {
       setTogglingPin(lesson.id);
@@ -213,18 +214,18 @@ export default function LessonsListScreen() {
         );
       }
     } catch (err) {
-      console.error('Error toggling pin:', err);
+      logger.error('Error toggling pin:', err);
     } finally {
       setTogglingPin(null);
     }
-  };
+  }, []);
 
-  const handleOpenNoteModal = (lesson: Lesson, e: any) => {
+  const handleOpenNoteModal = useCallback((lesson: Lesson, e: any) => {
     e.stopPropagation();
     setSelectedLesson(lesson);
     setNoteText(lesson.bookmark?.note || '');
     setNoteModalVisible(true);
-  };
+  }, []);
 
   const handleSaveNote = async () => {
     if (!selectedLesson) return;
@@ -257,13 +258,13 @@ export default function LessonsListScreen() {
         setNoteText('');
       }
     } catch (err) {
-      console.error('Error saving note:', err);
+      logger.error('Error saving note:', err);
     } finally {
       setSavingNote(false);
     }
   };
 
-  const getDifficultyColor = (difficulty?: string) => {
+  const getDifficultyColor = useCallback((difficulty?: string) => {
     switch (difficulty) {
       case 'easy':
         return '#10B981';
@@ -274,9 +275,9 @@ export default function LessonsListScreen() {
       default:
         return colors.primary;
     }
-  };
+  }, [colors.primary]);
 
-  const getDifficultyLabel = (difficulty?: string) => {
+  const getDifficultyLabel = useCallback((difficulty?: string) => {
     switch (difficulty) {
       case 'easy':
         return 'سهل';
@@ -287,7 +288,7 @@ export default function LessonsListScreen() {
       default:
         return 'غير محدد';
     }
-  };
+  }, []);
 
   const getPerformanceLevel = (lesson: Lesson): { label: string; color: string } => {
     if (!lesson.user_progress || lesson.user_progress.attempts_count === 0) {

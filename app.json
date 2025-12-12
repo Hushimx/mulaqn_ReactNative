@@ -39,6 +39,12 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "API_BASE_URL": "",
+      "WEBSOCKET_URL": "",
+      "WEBSOCKET_PORT": "8080",
+      "REVERB_APP_KEY": ""
     }
   }
 }

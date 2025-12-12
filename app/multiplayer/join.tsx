@@ -46,6 +46,7 @@ export default function MultiplayerJoinScreen() {
       const response = await api.post<{
         ok: boolean;
         data: { session_id: number; participants: any[]; status: string };
+        error?: { message: string; code?: string };
       }>(API_ENDPOINTS.MULTIPLAYER_JOIN, {
         session_code: sessionCode.toUpperCase(),
       });
@@ -58,10 +59,33 @@ export default function MultiplayerJoinScreen() {
           }
         });
       } else {
-        Alert.alert('خطأ', 'فشل الانضمام للجلسة');
+        // Extract error message from response
+        const errorMessage = response?.error?.message || 'فشل الانضمام للجلسة';
+        Alert.alert(
+          'خطأ في الانضمام',
+          errorMessage,
+          [{ text: 'حسناً', style: 'default' }]
+        );
       }
     } catch (error: any) {
-      Alert.alert('خطأ', error.message || 'حدث خطأ أثناء الانضمام للجلسة');
+      // Extract user-friendly error message
+      let errorMessage = 'حدث خطأ أثناء الانضمام للجلسة';
+      
+      // The API service throws Error with the message from backend
+      if (error?.message) {
+        errorMessage = error.message;
+      } else if (error?.response?.data?.error?.message) {
+        errorMessage = error.response.data.error.message;
+      } else if (error?.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      }
+      
+      // Show clear error message to user
+      Alert.alert(
+        'خطأ في الانضمام',
+        errorMessage,
+        [{ text: 'حسناً', style: 'default' }]
+      );
     } finally {
       setLoading(false);
     }

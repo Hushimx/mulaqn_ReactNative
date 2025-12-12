@@ -23,7 +23,7 @@ export default function MultiplayerCreateScreen() {
   const { trackId } = useLocalSearchParams<{ trackId: string }>();
   const { isRTL, textAlign, flexDirection } = useLanguage();
   const [loading, setLoading] = useState(false);
-  const [questionsCount, setQuestionsCount] = useState(30);
+  const [questionsCount, setQuestionsCount] = useState(3); // ✅ Changed to 3 for debugging
   const [winType, setWinType] = useState<'first_to_errors' | 'highest_percentage'>('highest_percentage');
   const [winValue, setWinValue] = useState<number | null>(null);
 
@@ -91,7 +91,7 @@ export default function MultiplayerCreateScreen() {
           <Animated.View entering={FadeInUp.duration(600).delay(200)} style={styles.section}>
             <Text style={styles.sectionTitle}>عدد الأسئلة</Text>
             <View style={styles.countContainer}>
-              {[15, 30, 50, 100].map((count) => (
+              {[3, 15, 30, 50, 100].map((count) => ( // ✅ Added 3 for debugging
                 <TouchableOpacity
                   key={count}
                   style={[

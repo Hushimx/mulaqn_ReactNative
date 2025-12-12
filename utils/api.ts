@@ -1,30 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Platform } from 'react-native';
+import { logger } from './logger';
+import { config } from './config';
 
-// Base URL - يمكن تغييره حسب البيئة
-// ملاحظة: للـ Android والجهاز الحقيقي، استخدم IP الجهاز بدلاً من localhost
-// للعثور على IP: في Mac/Linux: ifconfig | grep "inet " | grep -v 127.0.0.1
-// في Windows: ipconfig
-// IP الماك الحالي: 192.168.1.36 (يتم تحديثه تلقائياً)
-const buildApiBaseUrl = () => {
-  if (!__DEV__) {
-    return 'https://your-production-domain.com/api';
-  }
-  
-  // للـ iOS Simulator: localhost يعمل
-  if (Platform.OS === 'ios') {
-    // يمكن استخدام localhost للـ Simulator أو IP للجهاز الحقيقي
-    // إذا كنت تستخدم Simulator، استخدم 'http://localhost:8000/api'
-    // إذا كنت تستخدم جهاز حقيقي، استخدم IP الماك
-    return 'http://192.168.1.36:8000/api'; // IP الماك
-  }
-  
-  // للـ Android Emulator: 10.0.2.2 يعمل
-  // للـ Android الجهاز الحقيقي: استخدم IP الماك
-  return 'http://192.168.1.36:8000/api'; // IP الماك
-};
-
-const API_BASE_URL = buildApiBaseUrl();
+const API_BASE_URL = config.API_BASE_URL;
 
 // Token key في AsyncStorage
 const TOKEN_KEY = '@mulaqn_token';
@@ -34,9 +12,109 @@ const TOKEN_KEY = '@mulaqn_token';
  */
 class ApiService {
   private baseURL: string;
+  private cache: Map<string, { data: any; timestamp: number }> = new Map();
+  private readonly CACHE_TTL = 5 * 60 * 1000; // 5 دقائق
+  
+  // Whitelist للـ endpoints القابلة للـ caching
+  private readonly cacheableEndpoints: string[] = [
+    '/tracks', // قائمة المسارات
+    '/tracks/', // تفاصيل مسار (يجب أن يبدأ بـ /tracks/ لكن لا يحتوي على /lessons أو progress)
+  ];
 
   constructor() {
     this.baseURL = API_BASE_URL;
+  }
+
+  /**
+   * التحقق من أن endpoint قابل للـ caching
+   */
+  private isCacheable(endpoint: string): boolean {
+    // لا تكاش أي endpoint يحتوي على:
+    // - progress, user_progress, attempts
+    // - multiplayer
+    // - /me/ (بيانات المستخدم الشخصية)
+    // - lesson-attempts
+    const nonCacheablePatterns = [
+      'progress',
+      'user_progress',
+      'attempts',
+      'multiplayer',
+      '/me/',
+      'lesson-attempts',
+      'assessment-attempts',
+    ];
+    
+    if (nonCacheablePatterns.some(pattern => endpoint.includes(pattern))) {
+      return false;
+    }
+    
+    // التحقق من whitelist
+    // /tracks فقط (بدون parameters)
+    if (endpoint === '/tracks') {
+      return true;
+    }
+    
+    // /tracks/{id} - تفاصيل مسار واحد
+    if (/^\/tracks\/\d+$/.test(endpoint)) {
+      return true;
+    }
+    
+    // /tracks/{trackId}/lessons - قائمة الدروس (بدون progress)
+    // لكن يجب التأكد أن الـ response لا يحتوي على user_progress
+    if (/^\/tracks\/\d+\/lessons$/.test(endpoint)) {
+      return true;
+    }
+    
+    return false;
+  }
+
+  /**
+   * تنظيف الـ cache المنتهي الصلاحية
+   */
+  private cleanExpiredCache(): void {
+    const now = Date.now();
+    for (const [key, value] of this.cache.entries()) {
+      if (now - value.timestamp > this.CACHE_TTL) {
+        this.cache.delete(key);
+      }
+    }
+  }
+
+  /**
+   * الحصول على cached data
+   */
+  private getCachedData<T>(endpoint: string): T | null {
+    this.cleanExpiredCache();
+    const cached = this.cache.get(endpoint);
+    if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
+      logger.log(`[Cache] Hit for ${endpoint}`);
+      return cached.data as T;
+    }
+    return null;
+  }
+
+  /**
+   * حفظ data في cache
+   */
+  private setCachedData<T>(endpoint: string, data: T): void {
+    this.cache.set(endpoint, {
+      data,
+      timestamp: Date.now(),
+    });
+    logger.log(`[Cache] Stored for ${endpoint}`);
+  }
+
+  /**
+   * مسح cache لـ endpoint معين أو كل الـ cache
+   */
+  clearCache(endpoint?: string): void {
+    if (endpoint) {
+      this.cache.delete(endpoint);
+      logger.log(`[Cache] Cleared for ${endpoint}`);
+    } else {
+      this.cache.clear();
+      logger.log('[Cache] Cleared all');
+    }
   }
 
   /**
@@ -46,7 +124,7 @@ class ApiService {
     try {
       return await AsyncStorage.getItem(TOKEN_KEY);
     } catch (error) {
-      console.error('Error getting token:', error);
+      logger.error('Error getting token:', error);
       return null;
     }
   }
@@ -58,7 +136,7 @@ class ApiService {
     try {
       await AsyncStorage.setItem(TOKEN_KEY, token);
     } catch (error) {
-      console.error('Error saving token:', error);
+      logger.error('Error saving token:', error);
     }
   }
 
@@ -69,7 +147,7 @@ class ApiService {
     try {
       await AsyncStorage.removeItem(TOKEN_KEY);
     } catch (error) {
-      console.error('Error removing token:', error);
+      logger.error('Error removing token:', error);
     }
   }
 
@@ -98,7 +176,7 @@ class ApiService {
     const url = `${this.baseURL}${endpoint}`;
 
     try {
-      console.log(`[API] ${fetchOptions.method || 'GET'} ${url}`);
+      logger.log(`[API] ${fetchOptions.method || 'GET'} ${url}`);
       
       const response = await fetch(url, {
         ...fetchOptions,
@@ -113,16 +191,25 @@ class ApiService {
         data = await response.json();
       } else {
         const text = await response.text();
-        console.error('[API] Non-JSON response:', text);
+        logger.error('[API] Non-JSON response:', text);
         throw new Error('استجابة غير صحيحة من الخادم');
       }
 
-      console.log(`[API] Response status: ${response.status}`, data);
+      logger.log(`[API] Response status: ${response.status}`, data);
 
       if (!response.ok) {
         // Endpoints العامة - 401 يعني خطأ في البيانات وليس "انتهت صلاحية الجلسة"
         const publicEndpoints = ['/login', '/register', '/auth/send-otp', '/auth/verify-otp'];
         const isPublicEndpoint = publicEndpoints.some(publicEndpoint => endpoint.includes(publicEndpoint));
+        
+        // تحديد نوع الخطأ: متوقع (validation/user error) أم غير متوقع (system error)
+        const isExpectedError = response.status === 400 || response.status === 404 || response.status === 422;
+        const errorCode = data.error?.code || '';
+        const isUserError = isExpectedError || 
+          errorCode.includes('INVALID') || 
+          errorCode.includes('VALIDATION') || 
+          errorCode.includes('NOT_FOUND') ||
+          errorCode.includes('JOIN_ERROR');
         
         // إذا كان الخطأ 401 (Unauthorized)
         if (response.status === 401) {
@@ -158,7 +245,12 @@ class ApiService {
         
         // Handle different error formats
         const errorMessage = data.error?.message || data.message || `خطأ ${response.status}: ${response.statusText}`;
-        throw new Error(errorMessage);
+        
+        // تخزين نوع الخطأ في Error object للتمييز لاحقاً
+        const apiError = new Error(errorMessage);
+        (apiError as any).isUserError = isUserError;
+        (apiError as any).statusCode = response.status;
+        throw apiError;
       }
 
       return data;
@@ -168,7 +260,24 @@ class ApiService {
         return { ok: false, data: null, error: { message: 'Unauthenticated' } } as T;
       }
       
-      console.error('[API] Request failed:', error);
+      // التمييز بين الأخطاء المتوقعة (user errors) والأخطاء غير المتوقعة (system errors)
+      const isUserError = (error as any)?.isUserError === true;
+      const isNetworkError = error instanceof Error && (
+        error.message.includes('fetch') || 
+        error.message.includes('network') || 
+        error.message.includes('Failed to fetch')
+      );
+      
+      if (isUserError) {
+        // خطأ متوقع من المستخدم (مثل كود دعوة خاطئ) - سجله كـ warning أو log
+        logger.warn('[API] User error (expected):', error instanceof Error ? error.message : error);
+      } else if (isNetworkError) {
+        // خطأ في الشبكة - سجله كـ error
+        logger.error('[API] Network error:', error);
+      } else {
+        // خطأ غير متوقع في النظام - سجله كـ error
+        logger.error('[API] Request failed:', error);
+      }
       
       if (error instanceof Error) {
         // Check if it's a network error
@@ -184,35 +293,67 @@ class ApiService {
   /**
    * GET request
    */
-  async get<T>(endpoint: string, options?: { silent401?: boolean }): Promise<T> {
-    return this.request<T>(endpoint, { method: 'GET' }, options?.silent401);
+  async get<T>(endpoint: string, options?: { silent401?: boolean; useCache?: boolean }): Promise<T> {
+    // التحقق من cache إذا كان useCache = true أو endpoint قابل للـ caching
+    const shouldUseCache = options?.useCache !== false && this.isCacheable(endpoint);
+    
+    if (shouldUseCache) {
+      const cached = this.getCachedData<T>(endpoint);
+      if (cached !== null) {
+        return cached;
+      }
+    }
+    
+    const data = await this.request<T>(endpoint, { method: 'GET' }, options?.silent401);
+    
+    // حفظ في cache إذا كان endpoint قابل للـ caching
+    if (shouldUseCache) {
+      this.setCachedData(endpoint, data);
+    }
+    
+    return data;
   }
 
   /**
    * POST request
    */
   async post<T>(endpoint: string, body?: any): Promise<T> {
-    return this.request<T>(endpoint, {
+    const data = await this.request<T>(endpoint, {
       method: 'POST',
       body: body ? JSON.stringify(body) : undefined,
     });
+    
+    // مسح cache عند POST (قد تغير البيانات)
+    this.clearCache();
+    
+    return data;
   }
 
   /**
    * PUT request
    */
   async put<T>(endpoint: string, body?: any): Promise<T> {
-    return this.request<T>(endpoint, {
+    const data = await this.request<T>(endpoint, {
       method: 'PUT',
       body: body ? JSON.stringify(body) : undefined,
     });
+    
+    // مسح cache عند PUT (قد تغير البيانات)
+    this.clearCache();
+    
+    return data;
   }
 
   /**
    * DELETE request
    */
   async delete<T>(endpoint: string): Promise<T> {
-    return this.request<T>(endpoint, { method: 'DELETE' });
+    const data = await this.request<T>(endpoint, { method: 'DELETE' });
+    
+    // مسح cache عند DELETE (قد تغير البيانات)
+    this.clearCache();
+    
+    return data;
   }
 }
 
