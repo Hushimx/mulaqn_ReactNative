@@ -14,8 +14,8 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { GradientBackground } from '@/components/ui/GradientBackground';
-import { useLanguage } from '@/contexts/LanguageContext';
 import { getTrackColors } from '@/contexts/TrackContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { api, API_ENDPOINTS } from '@/utils/api';
 
 interface QuestionOption {
@@ -31,8 +31,7 @@ interface SelectionReason {
   reason: 'unknown' | 'weak' | 'moderate' | 'strong';
   reason_text: string;
   lesson_name?: string;
-  skill_name?: string;
-  mastery_level?: string;
+  // skill_name and mastery_level removed - using lessons only
 }
 
 interface QuestionReview {
@@ -58,7 +57,7 @@ interface AssessmentReview {
 
 export default function AssessmentReviewScreen() {
   const { t } = useTranslation();
-  const { isRTL } = useLanguage();
+  const { isRTL, textAlign, flexDirection } = useLanguage();
   const router = useRouter();
   const { id, attemptId } = useLocalSearchParams<{ id: string; attemptId: string }>();
   
@@ -184,18 +183,25 @@ export default function AssessmentReviewScreen() {
           {/* Question Header */}
           <View style={styles.questionHeader}>
             <View style={styles.questionHeaderLeft}>
-              <Text style={styles.questionNumber}>السؤال {selectedQuestionIndex + 1}</Text>
-              {currentQuestion.time_spent_sec !== undefined && currentQuestion.time_spent_sec > 0 && (
-                <View style={[
-                  styles.timeBadge,
-                  { backgroundColor: `${trackColors.primary}20`, borderColor: `${trackColors.primary}60` }
-                ]}>
-                  <MaterialIcons name="access-time" size={14} color={trackColors.primary} />
-                  <Text style={[styles.timeText, { color: trackColors.primary }]}>
-                    {formatTime(currentQuestion.time_spent_sec)}
-                  </Text>
-                </View>
-              )}
+              <View style={[styles.questionNumberBadge, { backgroundColor: `${trackColors.primary}25`, borderColor: trackColors.primary }]}>
+                <Text style={[styles.questionNumber, { color: trackColors.primary }]}>
+                  {selectedQuestionIndex + 1}
+                </Text>
+              </View>
+              <View>
+                <Text style={styles.questionNumberLabel}>السؤال رقم</Text>
+                {currentQuestion.time_spent_sec !== undefined && currentQuestion.time_spent_sec > 0 && (
+                  <View style={[
+                    styles.timeBadge,
+                    { backgroundColor: `${trackColors.primary}20`, borderColor: `${trackColors.primary}60` }
+                  ]}>
+                    <MaterialIcons name="access-time" size={14} color={trackColors.primary} />
+                    <Text style={[styles.timeText, { color: trackColors.primary }]}>
+                      {formatTime(currentQuestion.time_spent_sec)}
+                    </Text>
+                  </View>
+                )}
+              </View>
             </View>
             <View style={[
               styles.statusBadge,
@@ -203,14 +209,14 @@ export default function AssessmentReviewScreen() {
             ]}>
               <MaterialIcons 
                 name={currentQuestion.is_correct ? "check-circle" : "cancel"} 
-                size={16} 
+                size={18} 
                 color={currentQuestion.is_correct ? '#10B981' : '#EF4444'} 
               />
               <Text style={[
                 styles.statusText,
                 { color: currentQuestion.is_correct ? '#10B981' : '#EF4444' }
               ]}>
-                {currentQuestion.is_correct ? 'إجابة صحيحة' : 'إجابة خاطئة'}
+                {currentQuestion.is_correct ? 'إجابة صحيحة' : currentQuestion.selected_option_id ? 'إجابة خاطئة' : 'غير مجاب'}
               </Text>
             </View>
           </View>
@@ -334,7 +340,7 @@ export default function AssessmentReviewScreen() {
                 <Text style={[styles.selectionReasonTitle, { color: trackColors.primary }]}>{t('assessments.review.selectionReason.title')}</Text>
               </View>
               
-              <Text style={[styles.selectionReasonText, { textAlign: isRTL ? 'right' : 'left' }]}>
+              <Text style={[styles.selectionReasonText]}>
                 {currentQuestion.selection_reason.reason_text}
               </Text>
             </View>
@@ -347,7 +353,7 @@ export default function AssessmentReviewScreen() {
                 <MaterialIcons name="lightbulb" size={20} color={trackColors.primary} />
                 <Text style={styles.explanationTitle}>شرح الإجابة</Text>
               </View>
-              <Text style={[styles.explanationText, { textAlign: isRTL ? 'right' : 'left' }]}>
+              <Text style={[styles.explanationText]}>
                 {currentQuestion.explanation}
               </Text>
             </View>
@@ -489,10 +495,23 @@ const styles = StyleSheet.create({
     gap: 12,
     flex: 1,
   },
+  questionNumberBadge: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    borderWidth: 2,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
   questionNumber: {
-    color: '#FFFFFF',
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '700',
+  },
+  questionNumberLabel: {
+    color: 'rgba(255, 255, 255, 0.7)',
+    fontSize: 12,
+    marginBottom: 4,
   },
   timeBadge: {
     flexDirection: 'row',

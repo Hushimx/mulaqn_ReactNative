@@ -52,7 +52,7 @@ interface LessonAttempt {
 
 export default function LessonAttemptScreen() {
   const { t } = useTranslation();
-  const { isRTL } = useLanguage();
+  const { isRTL, textAlign, flexDirection } = useLanguage();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   
@@ -363,7 +363,7 @@ export default function LessonAttemptScreen() {
               </View>
             </View>
 
-            <Text style={[styles.questionText, { textAlign: isRTL ? 'right' : 'left' }]}>
+            <Text style={[styles.questionText]}>
               {currentQuestion.question_text}
             </Text>
           </View>
@@ -395,7 +395,7 @@ export default function LessonAttemptScreen() {
                         <MaterialIcons name="check" size={16} color="#FFFFFF" />
                       )}
                     </View>
-                    <Text style={[styles.optionText, { textAlign: isRTL ? 'right' : 'left' }]}>
+                    <Text style={[styles.optionText]}>
                       {option.option_text}
                     </Text>
                   </View>

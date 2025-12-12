@@ -7,7 +7,10 @@ export default function TracksLayout() {
         headerShown: false,
       }}
     >
-      <Stack.Screen name="[id]" />
+      <Stack.Screen name="[id]/index" />
+      <Stack.Screen name="[id]/performance" />
+      <Stack.Screen name="[id]/lessons" />
+      <Stack.Screen name="[id]/chat" />
     </Stack>
   );
 }

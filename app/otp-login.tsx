@@ -20,12 +20,16 @@ import { GradientButton } from '@/components/ui/GradientButton';
 import { GradientBackground } from '@/components/ui/GradientBackground';
 import { LanguageSwitcher } from '@/components/ui/LanguageSwitcher';
 import { useAuth } from '@/contexts/AuthContext';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { useRTL } from '@/hooks/useRTL';
 
 export default function OtpLoginScreen() {
   const { t } = useTranslation();
   const params = useLocalSearchParams();
   const router = useRouter();
   const { sendOtp, verifyOtp } = useAuth();
+  const { textAlign, flexDirection } = useLanguage();
+  const rtl = useRTL();
   
   const [phone, setPhone] = useState((params.phone as string) || '');
   const [otpCode, setOtpCode] = useState(['', '', '', '', '', '']);
@@ -176,12 +180,12 @@ export default function OtpLoginScreen() {
             </View>
 
             {/* Title */}
-            <Text style={styles.title}>
+            <Text style={[styles.title, { textAlign }]}>
               {t('otp.title') || 'أدخل رمز التحقق'}
             </Text>
 
             {/* Instructions */}
-            <Text style={styles.instructions}>
+            <Text style={[styles.instructions, { textAlign }]}>
               {t('otp.instructions') || 'لقد أرسلنا رمزا إلى رقم هاتفك الذي أدخلته، يرجى إدخال الرمز لإكمال التحقق.'}
             </Text>
 
@@ -210,15 +214,15 @@ export default function OtpLoginScreen() {
             />
 
             {/* Resend Option */}
-            <View style={styles.resendContainer}>
-              <Text style={styles.resendText}>
+            <View style={[styles.resendContainer, { flexDirection }]}>
+              <Text style={[styles.resendText, { textAlign }]}>
                 {t('otp.noCode') || 'لم يصلك أي رمز؟'}
               </Text>
               <TouchableOpacity
                 onPress={handleResendOtp}
                 disabled={countdown > 0 || isLoading}
               >
-                <Text style={[styles.resendLink, (countdown > 0 || isLoading) && styles.resendLinkDisabled]}>
+                <Text style={[styles.resendLink, { textAlign }, (countdown > 0 || isLoading) && styles.resendLinkDisabled]}>
                   {countdown > 0
                     ? t('otp.resendCountdown', { seconds: countdown }) || `أعد إرسال الرمز (${countdown})`
                     : t('otp.resend') || 'أعد إرسال الرمز'}
@@ -259,12 +263,10 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: '700',
     marginBottom: 16,
-    textAlign: 'center',
   },
   instructions: {
     color: '#FFFFFF',
     fontSize: 14,
-    textAlign: 'center',
     opacity: 0.8,
     marginBottom: 40,
     paddingHorizontal: 20,
@@ -294,7 +296,6 @@ const styles = StyleSheet.create({
     maxWidth: 60,
   },
   resendContainer: {
-    flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
     marginTop: 24,
@@ -304,7 +305,6 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 14,
     opacity: 0.8,
-    marginEnd: 4,
   },
   resendLink: {
     color: '#D4AF37',

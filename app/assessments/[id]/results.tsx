@@ -13,8 +13,8 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { GradientBackground } from '@/components/ui/GradientBackground';
-import { useLanguage } from '@/contexts/LanguageContext';
 import { getTrackColors } from '@/contexts/TrackContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { api, API_ENDPOINTS } from '@/utils/api';
 
 interface AssessmentResult {
@@ -29,8 +29,8 @@ interface AssessmentResult {
   incorrect_count: number;
   unanswered_count: number;
   time_taken_min: number;
-  skills_breakdown?: Array<{
-    skill_name: string;
+  lessons_breakdown?: Array<{
+    lesson_name: string;
     correct: number;
     total: number;
     percentage: number;
@@ -39,7 +39,7 @@ interface AssessmentResult {
 
 export default function AssessmentResultsScreen() {
   const { t } = useTranslation();
-  const { isRTL } = useLanguage();
+  const { isRTL, textAlign, flexDirection } = useLanguage();
   const router = useRouter();
   const { id, attemptId } = useLocalSearchParams<{ id: string; attemptId: string }>();
   
@@ -79,7 +79,7 @@ export default function AssessmentResultsScreen() {
           time_taken_min: attemptData.time_spent_sec 
             ? Math.round(attemptData.time_spent_sec / 60) 
             : 0,
-          skills_breakdown: attemptData.breakdown || [],
+          lessons_breakdown: attemptData.breakdown || [], // Now returns lessons breakdown instead of skills
         };
         
         setResult(resultData);
@@ -182,21 +182,21 @@ export default function AssessmentResultsScreen() {
             </View>
           </View>
 
-          {/* Skills Breakdown */}
-          {result.skills_breakdown && result.skills_breakdown.length > 0 && (
+          {/* Lessons Breakdown */}
+          {result.lessons_breakdown && result.lessons_breakdown.length > 0 && (
             <>
-              <Text style={[styles.sectionTitle, { textAlign: isRTL ? 'right' : 'left' }]}>
-                📊 تحليل الأداء حسب المهارات
+              <Text style={[styles.sectionTitle]}>
+                📊 تحليل الأداء حسب الدروس
               </Text>
               
               <View style={styles.skillsList}>
-                {result.skills_breakdown.map((skill, index) => (
+                {result.lessons_breakdown.map((lesson, index) => (
                   <View key={index} style={styles.skillCard}>
                     <View style={[styles.skillHeader, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-                      <Text style={[styles.skillName, { textAlign: isRTL ? 'right' : 'left' }]}>
-                        {skill.skill_name}
+                      <Text style={[styles.skillName]}>
+                        {lesson.lesson_name}
                       </Text>
-                      <Text style={styles.skillPercentage}>{skill.percentage.toFixed(0)}%</Text>
+                      <Text style={styles.skillPercentage}>{lesson.percentage.toFixed(0)}%</Text>
                     </View>
                     
                     <View style={styles.skillProgressBar}>
@@ -204,15 +204,15 @@ export default function AssessmentResultsScreen() {
                         style={[
                           styles.skillProgressFill, 
                           { 
-                            width: `${skill.percentage}%`,
-                            backgroundColor: skill.percentage >= 70 ? '#10B981' : skill.percentage >= 50 ? '#F59E0B' : '#EF4444',
+                            width: `${lesson.percentage}%`,
+                            backgroundColor: lesson.percentage >= 70 ? '#10B981' : lesson.percentage >= 50 ? '#F59E0B' : '#EF4444',
                           }
                         ]} 
                       />
                     </View>
                     
                     <Text style={styles.skillDetails}>
-                      {skill.correct} صحيحة من {skill.total}
+                      {lesson.correct} صحيحة من {lesson.total}
                     </Text>
                   </View>
                 ))}

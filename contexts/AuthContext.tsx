@@ -177,23 +177,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    */
   const refreshUser = async () => {
     try {
+      // استخدام silent401 لتجنب رمي خطأ عند 401
       const response = await api.get<{
         ok: boolean;
         data: User;
         error: null;
-      }>(API_ENDPOINTS.ME);
+      }>(API_ENDPOINTS.ME, { silent401: true });
 
       if (response && response.ok && response.data) {
         setUser(response.data);
       } else {
-        // إذا فشل، احذف token
+        // إذا فشل (مثل 401)، احذف token بشكل صامت
         await api.removeToken();
         setToken(null);
         setUser(null);
       }
     } catch (error) {
+      // هذا لا يجب أن يحدث مع silent401، لكن للاحتياط
       console.error('Error refreshing user:', error);
-      // إذا كان الخطأ 401، احذف token
       await api.removeToken();
       setToken(null);
       setUser(null);

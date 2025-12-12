@@ -15,6 +15,8 @@ import AnimatedDots from '../components/AnimatedDots';
 import { GradientBackground } from '../components/ui/GradientBackground';
 import { BRAND_COLORS, SHADOWS, SPACING } from '../constants/Theme';
 import { markFirstTimeCompleted } from '../utils/firstTimeUser';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { useRTL } from '@/hooks/useRTL';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
@@ -35,6 +37,8 @@ export default function WelcomeScreen() {
   const router = useRouter();
   const [currentStep, setCurrentStep] = useState(0);
   const scrollViewRef = useRef<ScrollView>(null);
+  const { textAlign, flexDirection } = useLanguage();
+  const rtl = useRTL();
 
   const handleNext = () => {
     if (currentStep < 2) {
@@ -96,19 +100,19 @@ export default function WelcomeScreen() {
               </View>
 
               {/* Title */}
-              <Text style={styles.title}>تعلم بمتعة وسهولة!</Text>
+              <Text style={[styles.title, { textAlign }]}>تعلم بمتعة وسهولة!</Text>
 
               {/* Features List */}
               <View style={styles.featuresContainer}>
                 {onboardingFeatures.map((feature, index) => (
-                  <View key={index} style={styles.featureItem}>
+                  <View key={index} style={[styles.featureItem, { flexDirection }]}>
                     <MaterialIcons 
                       name="check-circle" 
                       size={20} 
                       color={BRAND_COLORS.primary} 
                       style={styles.checkIcon}
                     />
-                    <Text style={styles.featureText}>{feature.text}</Text>
+                    <Text style={[styles.featureText, { textAlign }]}>{feature.text}</Text>
                   </View>
                 ))}
               </View>
@@ -123,19 +127,19 @@ export default function WelcomeScreen() {
                   resizeMode="contain"
                 />
               </View>
-              <Text style={styles.title}>دروس تفاعلية</Text>
+              <Text style={[styles.title, { textAlign }]}>دروس تفاعلية</Text>
               <View style={styles.featuresContainer}>
-                <View style={styles.featureItem}>
+                <View style={[styles.featureItem, { flexDirection }]}>
                   <MaterialIcons name="check-circle" size={20} color={BRAND_COLORS.primary} style={styles.checkIcon} />
-                  <Text style={styles.featureText}>محتوى تعليمي شامل</Text>
+                  <Text style={[styles.featureText, { textAlign }]}>محتوى تعليمي شامل</Text>
                 </View>
-                <View style={styles.featureItem}>
+                <View style={[styles.featureItem, { flexDirection }]}>
                   <MaterialIcons name="check-circle" size={20} color={BRAND_COLORS.primary} style={styles.checkIcon} />
-                  <Text style={styles.featureText}>فيديوهات عالية الجودة</Text>
+                  <Text style={[styles.featureText, { textAlign }]}>فيديوهات عالية الجودة</Text>
                 </View>
-                <View style={styles.featureItem}>
+                <View style={[styles.featureItem, { flexDirection }]}>
                   <MaterialIcons name="check-circle" size={20} color={BRAND_COLORS.primary} style={styles.checkIcon} />
-                  <Text style={styles.featureText}>تمارين تفاعلية</Text>
+                  <Text style={[styles.featureText, { textAlign }]}>تمارين تفاعلية</Text>
                 </View>
               </View>
             </View>
@@ -149,19 +153,19 @@ export default function WelcomeScreen() {
                   resizeMode="contain"
                 />
               </View>
-              <Text style={styles.title}>تتبع التقدم</Text>
+              <Text style={[styles.title, { textAlign }]}>تتبع التقدم</Text>
               <View style={styles.featuresContainer}>
-                <View style={styles.featureItem}>
+                <View style={[styles.featureItem, { flexDirection }]}>
                   <MaterialIcons name="check-circle" size={20} color={BRAND_COLORS.primary} style={styles.checkIcon} />
-                  <Text style={styles.featureText}>تقارير مفصلة عن الأداء</Text>
+                  <Text style={[styles.featureText, { textAlign }]}>تقارير مفصلة عن الأداء</Text>
                 </View>
-                <View style={styles.featureItem}>
+                <View style={[styles.featureItem, { flexDirection }]}>
                   <MaterialIcons name="check-circle" size={20} color={BRAND_COLORS.primary} style={styles.checkIcon} />
-                  <Text style={styles.featureText}>شهادات إتمام</Text>
+                  <Text style={[styles.featureText, { textAlign }]}>شهادات إتمام</Text>
                 </View>
-                <View style={styles.featureItem}>
+                <View style={[styles.featureItem, { flexDirection }]}>
                   <MaterialIcons name="check-circle" size={20} color={BRAND_COLORS.primary} style={styles.checkIcon} />
-                  <Text style={styles.featureText}>إحصائيات شاملة</Text>
+                  <Text style={[styles.featureText, { textAlign }]}>إحصائيات شاملة</Text>
                 </View>
               </View>
             </View>
@@ -189,7 +193,7 @@ export default function WelcomeScreen() {
               onPress={handleNext}
               activeOpacity={0.8}
             >
-              <Text style={styles.nextButtonText}>التالي</Text>
+              <Text style={[styles.nextButtonText, { textAlign }]}>التالي</Text>
             </TouchableOpacity>
 
             {/* Skip Button */}
@@ -198,7 +202,7 @@ export default function WelcomeScreen() {
               onPress={handleSkip}
               activeOpacity={0.8}
             >
-              <Text style={styles.skipButtonText}>تخطي</Text>
+              <Text style={[styles.skipButtonText, { textAlign }]}>تخطي</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -248,7 +252,6 @@ const styles = StyleSheet.create({
     fontSize: 26,
     fontFamily: 'Cairo-Bold',
     color: BRAND_COLORS.text.primary,
-    textAlign: 'center',
     marginBottom: SPACING.md,
     paddingHorizontal: SPACING.sm,
   },
@@ -258,7 +261,6 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   featureItem: {
-    flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 10,
     marginBottom: 4,
@@ -297,7 +299,6 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontFamily: 'Cairo-Bold',
     color: '#0B1E33',
-    textAlign: 'center',
   },
   skipButton: {
     backgroundColor: 'transparent',
@@ -313,6 +314,5 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontFamily: 'Cairo-SemiBold',
     color: BRAND_COLORS.primary,
-    textAlign: 'center',
   },
 });

@@ -17,12 +17,16 @@ import { GradientBackground } from '@/components/ui/GradientBackground';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { api, API_ENDPOINTS } from '@/utils/api';
+import { SkeletonStatCard, SkeletonTrackCard } from '@/components/ui/SkeletonLoader';
+import SpiritualCard from '@/components/spiritual/SpiritualCard';
 
 interface Track {
   id: number;
   code: string;
   name: string;
   description?: string;
+  has_subscription?: boolean;
+  subscription_status?: string;
 }
 
 interface UserPoints {
@@ -36,7 +40,7 @@ export default function HomeScreen() {
   const { t } = useTranslation();
   const router = useRouter();
   const { user } = useAuth();
-  const { isRTL } = useLanguage();
+  const { isRTL, flexDirection, textAlign } = useLanguage();
   const [tracks, setTracks] = useState<Track[]>([]);
   const [userPoints, setUserPoints] = useState<UserPoints | null>(null);
   const [loading, setLoading] = useState(true);
@@ -47,7 +51,7 @@ export default function HomeScreen() {
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [user]);
 
   const fetchData = async () => {
     try {
@@ -62,13 +66,19 @@ export default function HomeScreen() {
       // Fetch user points
       try {
         const pointsResponse = await api.get<{ ok: boolean; data: UserPoints }>(
-          API_ENDPOINTS.POINTS
+          API_ENDPOINTS.POINTS,
+          { silent401: true } // لا ترمي خطأ عند 401
         );
         if (pointsResponse && pointsResponse.ok && pointsResponse.data) {
           setUserPoints(pointsResponse.data);
         }
-      } catch (err) {
-        console.log('Points not available');
+      } catch (err: any) {
+        // تجاهل خطأ 401 (token منتهي) - هذا طبيعي
+        if (err?.message?.includes('انتهت صلاحية الجلسة')) {
+          // لا تفعل شيء - المستخدم يحتاج تسجيل الدخول
+        } else {
+          console.log('Points not available');
+        }
       }
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -78,7 +88,11 @@ export default function HomeScreen() {
   };
 
   const handleTrackPress = (track: Track) => {
-    router.push(`/(tabs)/tracks/${track.id}`);
+    if (track.has_subscription) {
+      router.push(`/(tabs)/tracks/${track.id}`);
+    } else {
+      router.push(`/subscription/${track.id}`);
+    }
   };
 
   const getTrackColor = (trackId: number) => {
@@ -100,19 +114,19 @@ export default function HomeScreen() {
           showsVerticalScrollIndicator={false}
         >
           {/* Header */}
-          <View style={[styles.header, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-            <View style={[styles.headerLeft, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+          <View style={[styles.header, { flexDirection }]}>
+            <View style={[styles.headerLeft, { flexDirection }]}>
               <View style={styles.headerText}>
-                <Text style={[styles.welcomeText, { textAlign: isRTL ? 'right' : 'left' }]}>
+                <Text style={[styles.welcomeText, { textAlign }]}>
                   مرحباً، {user?.full_name || 'ياسمين'}
                 </Text>
-                <Text style={[styles.headerSubtext, { textAlign: isRTL ? 'right' : 'left' }]}>
+                <Text style={[styles.headerSubtext, { textAlign }]}>
                   مركز التحكم الشخصي - تتبع تقدمك وادرس بذكاء
                 </Text>
               </View>
             </View>
             
-            <View style={[styles.headerRight, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+            <View style={[styles.headerRight, { flexDirection }]}>
               <TouchableOpacity style={styles.notificationButton}>
                 <MaterialIcons name="notifications" size={24} color="#FFFFFF" />
                 {notificationCount > 0 && (
@@ -133,140 +147,138 @@ export default function HomeScreen() {
             </View>
           </View>
 
-          {/* Stats Grid */}
-          <View style={styles.statsGrid}>
-            {/* Total Points */}
-            <View style={[styles.statCard, { borderColor: '#D4AF3740' }]}>
-              <View style={[styles.statIcon, { backgroundColor: '#3A3A3C' }]}>
-                <Image 
-                  source={require('@/assets/images/home_page/coins.png')} 
-                  style={styles.iconImage}
-                  resizeMode="contain"
-                />
-              </View>
-              <Text style={[styles.statValue, { color: '#D4AF37' }]}>
-                {userPoints?.total_points?.toLocaleString() || '10,059'}
-              </Text>
-              <Text style={styles.statLabel}>إجمالي النقاط</Text>
-              <TouchableOpacity style={[styles.actionButton, { backgroundColor: 'rgba(99, 205, 47, 0.1)', borderColor: '#63CD2F', borderWidth: 1 }]}>
-                <Text style={[styles.actionButtonText, { color: '#63CD2F' }]}>+{todayPoints} اليوم</Text>
-              </TouchableOpacity>
+          {/* Stats Grid - فقط النقاط وسلسلة النجاح */}
+          {loading ? (
+            <View style={styles.statsGrid}>
+              <SkeletonStatCard />
+              <SkeletonStatCard />
             </View>
+          ) : (
+            <View style={styles.statsGrid}>
+              {/* Total Points */}
+              <View style={[styles.statCard, { borderColor: '#D4AF3740' }]}>
+                <View style={[styles.statIcon, { backgroundColor: '#3A3A3C' }]}>
+                  <Image 
+                    source={require('@/assets/images/home_page/coins.png')} 
+                    style={styles.iconImage}
+                    resizeMode="contain"
+                  />
+                </View>
+                <Text style={[styles.statValue, { color: '#D4AF37' }]}>
+                  {userPoints?.total_points?.toLocaleString() || '10,059'}
+                </Text>
+                <Text style={styles.statLabel}>إجمالي النقاط</Text>
+                <TouchableOpacity style={[styles.actionButton, { backgroundColor: 'rgba(99, 205, 47, 0.1)', borderColor: '#63CD2F', borderWidth: 1 }]}>
+                  <Text style={[styles.actionButtonText, { color: '#63CD2F' }]}>+{todayPoints} اليوم</Text>
+                </TouchableOpacity>
+              </View>
 
-            {/* Streak */}
-            <View style={[styles.statCard, { borderColor: '#EF444440' }]}>
-              <View style={[styles.statIcon, { backgroundColor: '#3A3A3C' }]}>
-                <Image 
-                  source={require('@/assets/images/home_page/fire.png')} 
-                  style={styles.iconImage}
-                  resizeMode="contain"
-                />
+              {/* Streak */}
+              <View style={[styles.statCard, { borderColor: '#EF444440' }]}>
+                <View style={[styles.statIcon, { backgroundColor: '#3A3A3C' }]}>
+                  <Image 
+                    source={require('@/assets/images/home_page/fire.png')} 
+                    style={styles.iconImage}
+                    resizeMode="contain"
+                  />
+                </View>
+                <Text style={[styles.statValue, { color: '#EF4444' }]}>
+                  {userPoints?.streak_days || 0}
+                </Text>
+                <Text style={styles.statLabel}>سلسلة النجاح (أيام)</Text>
+                <TouchableOpacity style={[styles.actionButton, { backgroundColor: '#4B556330', borderColor: '#EF4444', borderWidth: 1 }]}>
+                  <Text style={[styles.actionButtonText, { color: '#EF4444' }]}>ابدأ سلسلتك</Text>
+                  <MaterialIcons name="play-arrow" size={16} color="#EF4444" />
+                </TouchableOpacity>
               </View>
-              <Text style={[styles.statValue, { color: '#EF4444' }]}>
-                {userPoints?.streak_days || 0}
-              </Text>
-              <Text style={styles.statLabel}>سلسلة النجاح (أيام)</Text>
-              <TouchableOpacity style={[styles.actionButton, { backgroundColor: '#4B556330', borderColor: '#EF4444', borderWidth: 1 }]}>
-                <Text style={[styles.actionButtonText, { color: '#EF4444' }]}>ابدأ سلسلتك</Text>
-                <MaterialIcons name="play-arrow" size={16} color="#EF4444" />
-              </TouchableOpacity>
             </View>
+          )}
 
-            {/* Accuracy Rate */}
-            <View style={[styles.statCard, { borderColor: '#06B6D440' }]}>
-              <View style={[styles.statIcon, { backgroundColor: '#3A3A3C' }]}>
-                <Image 
-                  source={require('@/assets/images/home_page/accuricy.png')} 
-                  style={styles.iconImage}
-                  resizeMode="contain"
-                />
-              </View>
-              <Text style={[styles.statValue, { color: '#06B6D4' }]}>
-                {accuracyRate}%
-              </Text>
-              <Text style={styles.statLabel}>معدل الدقة العام</Text>
-              <TouchableOpacity style={[styles.actionButton, { backgroundColor: '#EF444430', borderColor: '#EF4444', borderWidth: 1 }]}>
-                <Text style={[styles.actionButtonText, { color: '#EF4444' }]}>يحتاج تحسين</Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Total Questions */}
-            <View style={[styles.statCard, { borderColor: '#8B5CF640' }]}>
-              <View style={[styles.statIcon, { backgroundColor: '#3A3A3C' }]}>
-                <Image 
-                  source={require('@/assets/images/home_page/brain.png')} 
-                  style={styles.iconImage}
-                  resizeMode="contain"
-                />
-              </View>
-              <Text style={[styles.statValue, { color: '#8B5CF6' }]}>
-                {todayQuestions}
-              </Text>
-              <Text style={styles.statLabel}>إجمالي الأسئلة</Text>
-              <TouchableOpacity style={[styles.actionButton, { backgroundColor: '#10B98130', borderColor: '#10B981', borderWidth: 1 }]}>
-                <Text style={[styles.actionButtonText, { color: '#10B981' }]}>+{todayPoints} اليوم</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+          {/* Spiritual Card */}
+          <SpiritualCard />
 
           {/* Section Title */}
-          <Text style={[styles.sectionTitle, { textAlign: isRTL ? 'right' : 'left' }]}>
+          <Text style={[styles.sectionTitle, { textAlign }]}>
             الاختبارات المتاحة في النظام
           </Text>
 
           {/* Tracks Cards */}
           {loading ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color="#D4AF37" />
+            <View style={styles.tracksContainer}>
+              <SkeletonTrackCard />
+              <SkeletonTrackCard />
+              <SkeletonTrackCard />
             </View>
           ) : (
             <View style={styles.tracksContainer}>
               {tracks.map((track) => {
                 const trackColor = getTrackColor(track.id);
+                const isLocked = !track.has_subscription;
                 return (
-                  <TouchableOpacity
-                    key={track.id}
-                    style={[styles.trackCard, { borderColor: `${trackColor}40` }]}
-                    onPress={() => handleTrackPress(track)}
-                    activeOpacity={0.8}
-                  >
-                    <View style={styles.trackHeader}>
-                      <Text style={styles.trackEmoji}>🤖</Text>
-                      <View style={[styles.trackBadge, { backgroundColor: `${trackColor}20`, borderColor: trackColor }]}>
-                        <Text style={[styles.trackBadgeText, { color: trackColor }]}>3 شهور</Text>
-                      </View>
-                    </View>
-                    
-                    <Text style={[styles.trackTitle, { textAlign: isRTL ? 'right' : 'left' }]}>
-                      {track.name}
-                    </Text>
-                    
-                    <Text style={[styles.trackSubtitle, { textAlign: isRTL ? 'right' : 'left' }]}>
-                      اختبار التحصيل الدراسي للثانوية العامة
-                    </Text>
-
-                    <View style={styles.trackStats}>
-                      <View style={styles.trackStatItem}>
-                        <MaterialIcons name="access-time" size={16} color="rgba(255,255,255,0.7)" />
-                        <Text style={styles.trackStatText}>24/7 متوفر</Text>
-                      </View>
-                      <View style={styles.trackStatItem}>
-                        <MaterialIcons name="help-outline" size={16} color="rgba(255,255,255,0.7)" />
-                        <Text style={styles.trackStatText}>1000+ سؤال</Text>
-                      </View>
-                      <View style={styles.trackStatItem}>
-                        <MaterialIcons name="calendar-today" size={16} color="rgba(255,255,255,0.7)" />
-                        <Text style={styles.trackStatText}>3 شهور</Text>
-                      </View>
-                    </View>
-
-                    <TouchableOpacity 
-                      style={[styles.trackButton, { backgroundColor: trackColor }]}
+                  <View key={track.id} style={styles.trackCardWrapper}>
+                    <TouchableOpacity
+                      style={[
+                        styles.trackCard,
+                        { borderColor: `${trackColor}40` },
+                        isLocked && styles.trackCardLocked
+                      ]}
                       onPress={() => handleTrackPress(track)}
+                      activeOpacity={0.8}
+                      disabled={false}
                     >
-                      <Text style={styles.trackButtonText}>متابعة التدريب</Text>
+                      {isLocked && (
+                        <View style={styles.lockOverlay}>
+                          <View style={styles.lockContent}>
+                            <MaterialIcons name="lock" size={32} color="#FFFFFF" />
+                            <Text style={styles.lockText}>يتطلب اشتراك</Text>
+                          </View>
+                        </View>
+                      )}
+
+                      <View style={styles.trackHeader}>
+                        <Text style={styles.trackEmoji}>🤖</Text>
+                        <View style={[styles.trackBadge, { backgroundColor: `${trackColor}20`, borderColor: trackColor }]}>
+                          <Text style={[styles.trackBadgeText, { color: trackColor }]}>3 شهور</Text>
+                        </View>
+                      </View>
+                      
+                      <Text style={[styles.trackTitle, { textAlign }]}>
+                        {track.name}
+                      </Text>
+                      
+                      <Text style={[styles.trackSubtitle, { textAlign }]}>
+                        اختبار التحصيل الدراسي للثانوية العامة
+                      </Text>
+
+                      <View style={styles.trackStats}>
+                        <View style={styles.trackStatItem}>
+                          <MaterialIcons name="access-time" size={16} color="rgba(255,255,255,0.7)" />
+                          <Text style={styles.trackStatText}>24/7 متوفر</Text>
+                        </View>
+                        <View style={styles.trackStatItem}>
+                          <MaterialIcons name="help-outline" size={16} color="rgba(255,255,255,0.7)" />
+                          <Text style={styles.trackStatText}>1000+ سؤال</Text>
+                        </View>
+                        <View style={styles.trackStatItem}>
+                          <MaterialIcons name="calendar-today" size={16} color="rgba(255,255,255,0.7)" />
+                          <Text style={styles.trackStatText}>3 شهور</Text>
+                        </View>
+                      </View>
+
+                      <TouchableOpacity 
+                        style={[
+                          styles.trackButton,
+                          { backgroundColor: trackColor },
+                          isLocked && styles.trackButtonLocked
+                        ]}
+                        onPress={() => handleTrackPress(track)}
+                      >
+                        <Text style={styles.trackButtonText}>
+                          {isLocked ? 'اشترك الآن' : 'متابعة التدريب'}
+                        </Text>
+                      </TouchableOpacity>
                     </TouchableOpacity>
-                  </TouchableOpacity>
+                  </View>
                 );
               })}
             </View>
@@ -320,7 +332,7 @@ const styles = StyleSheet.create({
   notificationBadge: {
     position: 'absolute',
     top: 4,
-    right: 4,
+    end: 4,
     backgroundColor: '#EF4444',
     borderRadius: 10,
     width: 18,
@@ -433,11 +445,42 @@ const styles = StyleSheet.create({
   tracksContainer: {
     gap: 16,
   },
+  trackCardWrapper: {
+    position: 'relative',
+  },
   trackCard: {
     backgroundColor: 'rgba(18, 38, 57, 0.4)',
     borderRadius: 20,
     padding: 20,
     borderWidth: 2,
+    position: 'relative',
+  },
+  trackCardLocked: {
+    opacity: 0.6,
+  },
+  lockOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1,
+  },
+  lockContent: {
+    alignItems: 'center',
+    gap: 8,
+  },
+  lockText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+    textShadowColor: 'rgba(0, 0, 0, 0.75)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
   },
   trackHeader: {
     flexDirection: 'row',
@@ -488,6 +531,10 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: 12,
     alignItems: 'center',
+    zIndex: 2,
+  },
+  trackButtonLocked: {
+    backgroundColor: '#D4AF37',
   },
   trackButtonText: {
     color: '#FFFFFF',

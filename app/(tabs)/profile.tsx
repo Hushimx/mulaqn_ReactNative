@@ -17,6 +17,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { GradientButton } from '@/components/ui/GradientButton';
 import { GradientBackground } from '@/components/ui/GradientBackground';
 import { api, API_ENDPOINTS } from '@/utils/api';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { useRTL } from '@/hooks/useRTL';
 
 interface ProfileData {
   user: {
@@ -70,6 +72,8 @@ export default function ProfileScreen() {
   const { t } = useTranslation();
   const router = useRouter();
   const { user, logout, isLoading: authLoading } = useAuth();
+  const { isRTL, textAlign, flexDirection } = useLanguage();
+  const rtl = useRTL();
   
   const [profileData, setProfileData] = useState<ProfileData | null>(null);
   const [payments, setPayments] = useState<Payment[]>([]);
@@ -166,7 +170,7 @@ export default function ProfileScreen() {
           showsVerticalScrollIndicator={false}
         >
         {/* Header with Settings and Share Icons */}
-        <View style={styles.headerIcons}>
+        <View style={[styles.headerIcons, { flexDirection }]}>
           <TouchableOpacity style={styles.iconButton} activeOpacity={0.7}>
             <MaterialIcons name="settings" size={24} color="#D4AF37" />
           </TouchableOpacity>
@@ -186,64 +190,64 @@ export default function ProfileScreen() {
           </View>
 
           {/* User Info */}
-          <Text style={styles.userName}>
+          <Text style={[styles.userName, { textAlign }]}>
             {profileData?.user.full_name || user?.full_name || 'ياسمين محمد'}
           </Text>
           
-          <View style={styles.userInfoRow}>
+          <View style={[styles.userInfoRow, { flexDirection }]}>
             <MaterialIcons name="email" size={14} color="rgba(255,255,255,0.7)" style={styles.infoIcon} />
-            <Text style={styles.userEmail}>{profileData?.user.email || user?.email || ''}</Text>
+            <Text style={[styles.userEmail, { textAlign }]}>{profileData?.user.email || user?.email || ''}</Text>
           </View>
           
-          <View style={styles.userInfoRow}>
+          <View style={[styles.userInfoRow, { flexDirection }]}>
             <MaterialIcons name="event" size={14} color="rgba(255,255,255,0.7)" style={styles.infoIcon} />
-            <Text style={styles.userJoinDate}>
+            <Text style={[styles.userJoinDate, { textAlign }]}>
               Joined {profileData?.user.joined_at ? new Date(profileData.user.joined_at).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : 'Oct, 2025'}
             </Text>
           </View>
 
           {/* Review Test Data Button */}
           <TouchableOpacity style={styles.reviewButton} activeOpacity={0.8}>
-            <Text style={styles.reviewButtonText}>استعراض بيانات الاختبار</Text>
+            <Text style={[styles.reviewButtonText, { textAlign }]}>استعراض بيانات الاختبار</Text>
           </TouchableOpacity>
         </View>
 
         {/* Subscription Alert (Libya Section) */}
         {profileData?.subscription && (
           <View style={styles.alertCard}>
-            <View style={styles.alertHeader}>
+            <View style={[styles.alertHeader, { flexDirection }]}>
               <MaterialIcons name="notifications-active" size={20} color="#8B3A3A" />
-              <Text style={styles.alertTitle}>ليبيا</Text>
+              <Text style={[styles.alertTitle, { textAlign }]}>ليبيا</Text>
             </View>
-            <Text style={styles.alertText}>
+            <Text style={[styles.alertText, { textAlign }]}>
               سينتهي الاشتراك في{' '}
               <Text style={styles.alertBold}>{profileData.subscription.track.name}</Text>{' '}
               إلى التجديد
             </Text>
-            <Text style={styles.alertDate}>
+            <Text style={[styles.alertDate, { textAlign }]}>
               {new Date(profileData.subscription.renewal_date).toLocaleDateString('ar-SA')}
             </Text>
-            <Text style={styles.alertNote}>
+            <Text style={[styles.alertNote, { textAlign }]}>
               لمواصلة الدخول للمحتوى
             </Text>
           </View>
         )}
 
         {/* Achievements Section */}
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>الإنجازات</Text>
+        <View style={[styles.sectionHeader, { flexDirection }]}>
+          <Text style={[styles.sectionTitle, { textAlign }]}>الإنجازات</Text>
         </View>
         
         <View style={styles.achievementsContainer}>
           {/* Static Achievement Cards matching the image */}
-          <View style={styles.achievementCard}>
-            <View style={styles.achievementLeft}>
+          <View style={[styles.achievementCard, { flexDirection }]}>
+            <View style={[styles.achievementLeft, { flexDirection }]}>
               <View style={styles.goldBadge}>
                 <MaterialIcons name="emoji-events" size={20} color="#1B365D" />
               </View>
               <View style={styles.achievementInfo}>
-                <Text style={styles.achievementName}>اختبار step</Text>
-                <Text style={styles.achievementSubtext}>* ساعات - * دروس</Text>
+                <Text style={[styles.achievementName, { textAlign }]}>اختبار step</Text>
+                <Text style={[styles.achievementSubtext, { textAlign }]}>* ساعات - * دروس</Text>
               </View>
             </View>
             <View style={styles.achievementIcon}>
@@ -251,14 +255,14 @@ export default function ProfileScreen() {
             </View>
           </View>
 
-          <View style={styles.achievementCard}>
-            <View style={styles.achievementLeft}>
+          <View style={[styles.achievementCard, { flexDirection }]}>
+            <View style={[styles.achievementLeft, { flexDirection }]}>
               <View style={styles.goldBadge}>
                 <MaterialIcons name="emoji-events" size={20} color="#1B365D" />
               </View>
               <View style={styles.achievementInfo}>
-                <Text style={styles.achievementName}>اختبار القدرات العامة</Text>
-                <Text style={styles.achievementSubtext}>* ساعات - * دروس</Text>
+                <Text style={[styles.achievementName, { textAlign }]}>اختبار القدرات العامة</Text>
+                <Text style={[styles.achievementSubtext, { textAlign }]}>* ساعات - * دروس</Text>
               </View>
             </View>
             <View style={styles.achievementIcon}>
@@ -266,14 +270,14 @@ export default function ProfileScreen() {
             </View>
           </View>
 
-          <View style={styles.achievementCard}>
-            <View style={styles.achievementLeft}>
+          <View style={[styles.achievementCard, { flexDirection }]}>
+            <View style={[styles.achievementLeft, { flexDirection }]}>
               <View style={styles.goldBadge}>
                 <MaterialIcons name="emoji-events" size={20} color="#1B365D" />
               </View>
               <View style={styles.achievementInfo}>
-                <Text style={styles.achievementName}>الاختبار التحصيلي</Text>
-                <Text style={styles.achievementSubtext}>* ساعات - * دروس</Text>
+                <Text style={[styles.achievementName, { textAlign }]}>الاختبار التحصيلي</Text>
+                <Text style={[styles.achievementSubtext, { textAlign }]}>* ساعات - * دروس</Text>
               </View>
             </View>
             <View style={styles.achievementIcon}>
@@ -283,8 +287,8 @@ export default function ProfileScreen() {
         </View>
 
         {/* Invoices/Payments Section */}
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>الفواتير</Text>
+        <View style={[styles.sectionHeader, { flexDirection }]}>
+          <Text style={[styles.sectionTitle, { textAlign }]}>الفواتير</Text>
           <TouchableOpacity>
             <MaterialIcons name="keyboard-arrow-down" size={24} color="#FFFFFF" />
           </TouchableOpacity>
@@ -293,11 +297,11 @@ export default function ProfileScreen() {
         <View style={styles.invoicesContainer}>
           {/* Static Invoice Cards matching the image */}
           <View style={styles.invoiceCard}>
-            <View style={styles.invoiceHeader}>
-              <View style={styles.invoiceAmount}>
-                <Text style={styles.invoiceAmountText}>220 ريال سعودي</Text>
+            <View style={[styles.invoiceHeader, { flexDirection }]}>
+              <View style={[styles.invoiceAmount, { flexDirection }]}>
+                <Text style={[styles.invoiceAmountText, { textAlign }]}>220 ريال سعودي</Text>
                 <View style={[styles.statusBadge, { backgroundColor: '#4CAF50' }]}>
-                  <Text style={styles.statusBadgeText}>مكتمل</Text>
+                  <Text style={[styles.statusBadgeText, { textAlign }]}>مكتمل</Text>
                 </View>
               </View>
               <TouchableOpacity onPress={() => setExpandedInvoice(expandedInvoice === 1 ? null : 1)}>
@@ -308,15 +312,15 @@ export default function ProfileScreen() {
                 />
               </TouchableOpacity>
             </View>
-            <Text style={styles.invoiceEmail}>m0nzer.2025@gmail.com</Text>
+            <Text style={[styles.invoiceEmail, { textAlign }]}>m0nzer.2025@gmail.com</Text>
           </View>
 
           <View style={styles.invoiceCard}>
-            <View style={styles.invoiceHeader}>
-              <View style={styles.invoiceAmount}>
-                <Text style={styles.invoiceAmountText}>220 ريال سعودي</Text>
+            <View style={[styles.invoiceHeader, { flexDirection }]}>
+              <View style={[styles.invoiceAmount, { flexDirection }]}>
+                <Text style={[styles.invoiceAmountText, { textAlign }]}>220 ريال سعودي</Text>
                 <View style={[styles.statusBadge, { backgroundColor: '#FF6B9D' }]}>
-                  <Text style={styles.statusBadgeText}>قيد الانتظار</Text>
+                  <Text style={[styles.statusBadgeText, { textAlign }]}>قيد الانتظار</Text>
                 </View>
               </View>
               <TouchableOpacity onPress={() => setExpandedInvoice(expandedInvoice === 2 ? null : 2)}>
@@ -327,15 +331,15 @@ export default function ProfileScreen() {
                 />
               </TouchableOpacity>
             </View>
-            <Text style={styles.invoiceEmail}>m0nzer.2025@gmail.com</Text>
+            <Text style={[styles.invoiceEmail, { textAlign }]}>m0nzer.2025@gmail.com</Text>
           </View>
 
           <View style={styles.invoiceCard}>
-            <View style={styles.invoiceHeader}>
-              <View style={styles.invoiceAmount}>
-                <Text style={styles.invoiceAmountText}>220 ريال سعودي</Text>
+            <View style={[styles.invoiceHeader, { flexDirection }]}>
+              <View style={[styles.invoiceAmount, { flexDirection }]}>
+                <Text style={[styles.invoiceAmountText, { textAlign }]}>220 ريال سعودي</Text>
                 <View style={[styles.statusBadge, { backgroundColor: '#9C27B0' }]}>
-                  <Text style={styles.statusBadgeText}>مدفوعة</Text>
+                  <Text style={[styles.statusBadgeText, { textAlign }]}>مدفوعة</Text>
                 </View>
               </View>
               <TouchableOpacity onPress={() => setExpandedInvoice(expandedInvoice === 3 ? null : 3)}>
@@ -346,7 +350,7 @@ export default function ProfileScreen() {
                 />
               </TouchableOpacity>
             </View>
-            <Text style={styles.invoiceEmail}>m0nzer.2025@gmail.com</Text>
+            <Text style={[styles.invoiceEmail, { textAlign }]}>m0nzer.2025@gmail.com</Text>
           </View>
         </View>
 
@@ -375,7 +379,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   headerIcons: {
-    flexDirection: 'row',
     justifyContent: 'space-between',
     marginBottom: 20,
   },
@@ -410,12 +413,11 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   userInfoRow: {
-    flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 6,
   },
   infoIcon: {
-    marginRight: 6,
+    marginEnd: 6,
   },
   userEmail: {
     color: 'rgba(255,255,255,0.7)',
@@ -444,7 +446,6 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   alertHeader: {
-    flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 8,
   },
@@ -452,7 +453,7 @@ const styles = StyleSheet.create({
     color: '#8B3A3A',
     fontSize: 18,
     fontWeight: '700',
-    marginLeft: 8,
+    marginStart: 8,
   },
   alertText: {
     color: '#5C1F1F',
@@ -474,7 +475,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   sectionHeader: {
-    flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 12,
@@ -493,12 +493,10 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 14,
     marginBottom: 10,
-    flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
   achievementLeft: {
-    flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
   },
@@ -509,7 +507,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#D4AF37',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
+    marginEnd: 12,
   },
   achievementInfo: {
     flex: 1,
@@ -542,13 +540,11 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   invoiceHeader: {
-    flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 8,
   },
   invoiceAmount: {
-    flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
   },

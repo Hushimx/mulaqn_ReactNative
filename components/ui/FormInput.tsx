@@ -97,7 +97,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
     marginBottom: 8,
-    textAlign: I18nManager.isRTL ? 'right' : 'left',
   },
   inputWrapper: {
     position: 'relative',
@@ -139,7 +138,6 @@ const styles = StyleSheet.create({
     color: '#FF6B6B',
     fontSize: 12,
     marginTop: 4,
-    textAlign: I18nManager.isRTL ? 'right' : 'left',
   },
 });
 

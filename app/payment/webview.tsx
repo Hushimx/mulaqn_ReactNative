@@ -29,7 +29,7 @@ export default function PaymentWebViewScreen() {
     try {
       setChecking(true);
       const response = await api.get<{ ok: boolean; data: any }>(
-        API_ENDPOINTS.PAYMENTS + `/${paymentId}`
+        API_ENDPOINTS.PAYMENT(paymentId as string)
       );
 
       if (response && response.ok && response.data) {

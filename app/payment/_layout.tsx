@@ -9,6 +9,7 @@ export default function PaymentLayout() {
       }}
     >
       <Stack.Screen name="webview" />
+      <Stack.Screen name="moyasar" />
       <Stack.Screen name="success" />
       <Stack.Screen name="error" />
     </Stack>

@@ -20,9 +20,11 @@ import { GradientBackground } from '@/components/ui/GradientBackground';
 import { LanguageSwitcher } from '@/components/ui/LanguageSwitcher';
 import { FormInput } from '@/components/ui/FormInput';
 import { useAuth } from '@/contexts/AuthContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 export default function LoginScreen() {
   const { t } = useTranslation();
+  const { isRTL, textAlign, flexDirection } = useLanguage();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -81,8 +83,8 @@ export default function LoginScreen() {
 
             {/* Title */}
             <View style={styles.titleContainer}>
-              <Text style={styles.title}>{t('auth.login.title')}</Text>
-              <Text style={styles.subtitle}>
+              <Text style={[styles.title]}>{t('auth.login.title')}</Text>
+              <Text style={[styles.subtitle]}>
                 {t('auth.login.subtitle')}
               </Text>
             </View>
@@ -123,38 +125,38 @@ export default function LoginScreen() {
             />
 
             {/* Separator */}
-            <View style={styles.separator}>
+            <View style={[styles.separator]}>
               <View style={styles.separatorLine} />
-              <Text style={styles.separatorText}>{t('auth.login.separator')}</Text>
+              <Text style={[styles.separatorText]}>{t('auth.login.separator')}</Text>
               <View style={styles.separatorLine} />
             </View>
 
             {/* Social Login Buttons */}
-            <View style={styles.socialContainer}>
-              <TouchableOpacity style={styles.socialButton} activeOpacity={0.8}>
+            <View style={[styles.socialContainer]}>
+              <TouchableOpacity style={[styles.socialButton]} activeOpacity={0.8}>
                 <MaterialIcons name="apple" size={24} color="#FFFFFF" />
-                <Text style={styles.socialText}>{t('common.apple')}</Text>
+                <Text style={[styles.socialText]}>{t('common.apple')}</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity style={styles.socialButton} activeOpacity={0.8}>
+              <TouchableOpacity style={[styles.socialButton]} activeOpacity={0.8}>
                 <MaterialIcons name="all-inclusive" size={24} color="#FFFFFF" />
-                <Text style={styles.socialText}>{t('common.google')}</Text>
+                <Text style={[styles.socialText]}>{t('common.google')}</Text>
               </TouchableOpacity>
             </View>
 
             {/* OTP Login Link */}
-            <View style={styles.otpLoginContainer}>
-              <Text style={styles.otpLoginText}>{t('auth.login.phoneLoginQuestion')} </Text>
+            <View style={[styles.otpLoginContainer]}>
+              <Text style={[styles.otpLoginText]}>{t('auth.login.phoneLoginQuestion')} </Text>
               <TouchableOpacity onPress={() => router.push({ pathname: '/otp-login', params: { phone: '' } })}>
-                <Text style={styles.otpLoginLink}>{t('auth.login.phoneLoginLink')}</Text>
+                <Text style={[styles.otpLoginLink]}>{t('auth.login.phoneLoginLink')}</Text>
               </TouchableOpacity>
             </View>
 
             {/* Register Link */}
-            <View style={styles.registerContainer}>
-              <Text style={styles.registerText}>{t('auth.login.registerQuestion')} </Text>
+            <View style={[styles.registerContainer]}>
+              <Text style={[styles.registerText]}>{t('auth.login.registerQuestion')} </Text>
               <TouchableOpacity onPress={() => router.push('/register')}>
-                <Text style={styles.registerLink}>{t('auth.login.registerLink')}</Text>
+                <Text style={[styles.registerLink]}>{t('auth.login.registerLink')}</Text>
               </TouchableOpacity>
             </View>
           </ScrollView>
@@ -201,13 +203,10 @@ const styles = StyleSheet.create({
   subtitle: {
     color: '#FFFFFF',
     fontSize: 14,
-    textAlign: 'center',
     opacity: 0.8,
   },
   forgotPassword: {
-    alignSelf: 'flex-end',
     marginBottom: 24,
-    alignItems: 'flex-end',
   },
   forgotText: {
     color: '#D4AF37',
@@ -236,13 +235,13 @@ const styles = StyleSheet.create({
     marginBottom: 32,
   },
   socialButton: {
+    flexDirection: 'row',
     flex: 1,
     backgroundColor: 'rgba(255, 255, 255, 0.1)',
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.2)',
     borderRadius: 12,
     paddingVertical: 14,
-    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,

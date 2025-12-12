@@ -28,7 +28,7 @@ export default function PaymentSuccessScreen() {
       if (paymentId) {
         // Fetch payment details to get subscription info
         const response = await api.get<{ ok: boolean; data: any }>(
-          API_ENDPOINTS.PAYMENTS + `/${paymentId}`
+          API_ENDPOINTS.PAYMENT(paymentId as string)
         );
 
         if (response && response.ok && response.data) {

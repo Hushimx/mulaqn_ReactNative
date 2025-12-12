@@ -8,7 +8,7 @@ interface TrackColors {
 interface TrackContextType {
   currentTrackId: number | null;
   trackColors: TrackColors;
-  setCurrentTrack: (id: number) => void;
+  setCurrentTrack: (id: number | null) => void;
 }
 
 const defaultColors: TrackColors = {
@@ -33,7 +33,7 @@ export const getTrackColors = (trackId: number | null): TrackColors => {
     case 3: // STEP - بنفسجي
       return {
         primary: '#8B5CF6',
-        gradient: ['#0F1419', '#8B5CF6', '#1B365D'] as const,
+        gradient: ['#0F1419', '#8B5CF6', '#6D28D9'] as const, // بنفسجي داكن بدلاً من الأزرق
       };
     default:
       return defaultColors;
@@ -43,7 +43,7 @@ export const getTrackColors = (trackId: number | null): TrackColors => {
 export function TrackProvider({ children }: { children: ReactNode }) {
   const [currentTrackId, setCurrentTrackId] = useState<number | null>(null);
 
-  const setCurrentTrack = (id: number) => {
+  const setCurrentTrack = (id: number | null) => {
     setCurrentTrackId(id);
   };
 

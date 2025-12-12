@@ -8,18 +8,10 @@ import en from '../locales/en.json';
 
 const LANGUAGE_KEY = '@app/language';
 
-// Get device language
+// Get device language - DEFAULT TO ARABIC
 const getDeviceLanguage = (): string => {
-  try {
-    const locale = Localization.locale;
-    if (locale && typeof locale === 'string' && locale.startsWith('ar')) {
-      return 'ar';
-    }
-    return 'en';
-  } catch (error) {
-    console.error('Error getting device language:', error);
-    return 'ar'; // Default to Arabic
-  }
+  // Always default to Arabic unless explicitly set otherwise
+  return 'ar';
 };
 
 // Load saved language preference

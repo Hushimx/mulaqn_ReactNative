@@ -13,11 +13,13 @@ import { useTranslation } from 'react-i18next';
 import { GradientButton } from '@/components/ui/GradientButton';
 import { GradientBackground } from '@/components/ui/GradientBackground';
 import { LanguageSwitcher } from '@/components/ui/LanguageSwitcher';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 export default function RegisterSuccessScreen() {
   const { t } = useTranslation();
   const router = useRouter();
   const params = useLocalSearchParams();
+  const { textAlign } = useLanguage();
   const fullName = params.fullName as string || '';
 
   return (
@@ -36,12 +38,12 @@ export default function RegisterSuccessScreen() {
           </View>
 
           {/* Success Message */}
-          <Text style={styles.congratulations}>
+          <Text style={[styles.congratulations, { textAlign }]}>
             {t('register.success.congratulations') || 'مبروووك !'}
           </Text>
 
           {/* Welcome Message */}
-          <Text style={styles.welcomeText}>
+          <Text style={[styles.welcomeText, { textAlign }]}>
             {t('register.success.welcome', { name: fullName || t('register.success.user') || 'المستخدم' }) || `أهلا بك في ملاقن لقد تم إنشاء حسابك بنجاح`}
           </Text>
 
@@ -79,12 +81,10 @@ const styles = StyleSheet.create({
     fontSize: 32,
     fontWeight: '700',
     marginBottom: 24,
-    textAlign: 'center',
   },
   welcomeText: {
     color: '#FFFFFF',
     fontSize: 16,
-    textAlign: 'center',
     opacity: 0.9,
     marginBottom: 48,
     lineHeight: 24,

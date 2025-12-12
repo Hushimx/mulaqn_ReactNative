@@ -17,6 +17,7 @@ import { GradientBackground } from '@/components/ui/GradientBackground';
 import { GradientButton } from '@/components/ui/GradientButton';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { api, API_ENDPOINTS } from '@/utils/api';
+import { SkeletonLessonHeader, SkeletonLoader } from '@/components/ui/SkeletonLoader';
 
 interface Lesson {
   id: number;
@@ -41,7 +42,7 @@ interface Lesson {
 
 export default function LessonShowScreen() {
   const { t } = useTranslation();
-  const { isRTL } = useLanguage();
+  const { isRTL, textAlign, flexDirection } = useLanguage();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   
@@ -132,10 +133,55 @@ export default function LessonShowScreen() {
   if (loading) {
     return (
       <GradientBackground>
+        <StatusBar barStyle="light-content" />
         <SafeAreaView style={styles.safeArea}>
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#D4AF37" />
-            <Text style={styles.loadingText}>{t('common.loading')}</Text>
+          {/* Header */}
+          <View style={[styles.header, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+            <TouchableOpacity
+              style={styles.backButton}
+              onPress={() => router.back()}
+            >
+              <MaterialIcons
+                name={isRTL ? 'arrow-forward' : 'arrow-back'}
+                size={24}
+                color="#FFFFFF"
+              />
+            </TouchableOpacity>
+            <SkeletonLoader width="50%" height={20} borderRadius={6} />
+            <View style={styles.headerSpacer} />
+          </View>
+
+          <ScrollView
+            style={styles.scrollView}
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+          >
+            {/* Lesson Header Skeleton */}
+            <SkeletonLessonHeader />
+
+            {/* Description Section Skeleton */}
+            <View style={styles.section}>
+              <SkeletonLoader width="40%" height={18} borderRadius={6} style={{ marginBottom: 12 }} />
+              <SkeletonLoader width="100%" height={14} borderRadius={6} style={{ marginBottom: 8 }} />
+              <SkeletonLoader width="95%" height={14} borderRadius={6} style={{ marginBottom: 8 }} />
+              <SkeletonLoader width="90%" height={14} borderRadius={6} />
+            </View>
+
+            {/* Content Section Skeleton */}
+            <View style={styles.section}>
+              <SkeletonLoader width="35%" height={18} borderRadius={6} style={{ marginBottom: 12 }} />
+              <View style={styles.contentCard}>
+                <SkeletonLoader width="100%" height={14} borderRadius={6} style={{ marginBottom: 8 }} />
+                <SkeletonLoader width="100%" height={14} borderRadius={6} style={{ marginBottom: 8 }} />
+                <SkeletonLoader width="95%" height={14} borderRadius={6} style={{ marginBottom: 8 }} />
+                <SkeletonLoader width="90%" height={14} borderRadius={6} />
+              </View>
+            </View>
+          </ScrollView>
+
+          {/* Bottom Button Skeleton */}
+          <View style={styles.bottomContainer}>
+            <SkeletonLoader width="100%" height={56} borderRadius={12} />
           </View>
         </SafeAreaView>
       </GradientBackground>
@@ -188,7 +234,7 @@ export default function LessonShowScreen() {
         >
           {/* Lesson Header Card */}
           <View style={styles.lessonHeader}>
-            <Text style={[styles.lessonTitle, { textAlign: isRTL ? 'right' : 'left' }]}>
+            <Text style={[styles.lessonTitle]}>
               {lesson.title}
             </Text>
 
@@ -229,10 +275,10 @@ export default function LessonShowScreen() {
           {/* Description */}
           {lesson.description && (
             <View style={styles.section}>
-              <Text style={[styles.sectionTitle, { textAlign: isRTL ? 'right' : 'left' }]}>
+              <Text style={[styles.sectionTitle]}>
                 {t('lessons.description')}
               </Text>
-              <Text style={[styles.descriptionText, { textAlign: isRTL ? 'right' : 'left' }]}>
+              <Text style={[styles.descriptionText]}>
                 {lesson.description}
               </Text>
             </View>
@@ -241,11 +287,11 @@ export default function LessonShowScreen() {
           {/* Content */}
           {lesson.content && (
             <View style={styles.section}>
-              <Text style={[styles.sectionTitle, { textAlign: isRTL ? 'right' : 'left' }]}>
+              <Text style={[styles.sectionTitle]}>
                 {t('lessons.content')}
               </Text>
               <View style={styles.contentCard}>
-                <Text style={[styles.contentText, { textAlign: isRTL ? 'right' : 'left' }]}>
+                <Text style={[styles.contentText]}>
                   {lesson.content}
                 </Text>
               </View>
@@ -255,7 +301,7 @@ export default function LessonShowScreen() {
           {/* Progress Stats */}
           {lesson.user_progress && lesson.user_progress.attempts_count > 0 && (
             <View style={styles.section}>
-              <Text style={[styles.sectionTitle, { textAlign: isRTL ? 'right' : 'left' }]}>
+              <Text style={[styles.sectionTitle]}>
                 {t('lessons.yourProgress')}
               </Text>
               <View style={styles.statsCard}>

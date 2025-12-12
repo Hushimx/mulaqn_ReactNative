@@ -20,6 +20,8 @@ import { GradientBackground } from '@/components/ui/GradientBackground';
 import { LanguageSwitcher } from '@/components/ui/LanguageSwitcher';
 import { FormInput } from '@/components/ui/FormInput';
 import { useAuth } from '@/contexts/AuthContext';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { useRTL } from '@/hooks/useRTL';
 
 export default function RegisterScreen() {
   const { t } = useTranslation();
@@ -32,6 +34,8 @@ export default function RegisterScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
   const { sendOtp } = useAuth();
+  const { textAlign, flexDirection } = useLanguage();
+  const rtl = useRTL();
 
   const validateForm = (): string | null => {
     if (!fullName.trim()) {
@@ -131,8 +135,8 @@ export default function RegisterScreen() {
 
             {/* Title */}
             <View style={styles.titleContainer}>
-              <Text style={styles.title}>{t('auth.register.title')}</Text>
-              <Text style={styles.subtitle}>
+              <Text style={[styles.title, { textAlign }]}>{t('auth.register.title')}</Text>
+              <Text style={[styles.subtitle, { textAlign }]}>
                 {t('auth.register.subtitle')}
               </Text>
             </View>
@@ -192,7 +196,7 @@ export default function RegisterScreen() {
 
             {/* Terms & Conditions */}
             <TouchableOpacity
-              style={styles.termsContainer}
+              style={[styles.termsContainer, { flexDirection }]}
               onPress={() => setTermsAccepted(!termsAccepted)}
               activeOpacity={0.7}
             >
@@ -201,7 +205,7 @@ export default function RegisterScreen() {
                   <MaterialIcons name="check" size={20} color="#FFFFFF" />
                 )}
               </View>
-              <Text style={styles.termsText}>
+              <Text style={[styles.termsText, { textAlign }]}>
                 {t('auth.register.terms')} <Text style={styles.termsLink}>{t('auth.register.termsLink')}</Text>
               </Text>
             </TouchableOpacity>
@@ -214,30 +218,30 @@ export default function RegisterScreen() {
             />
 
             {/* Separator */}
-            <View style={styles.separator}>
+            <View style={[styles.separator, { flexDirection }]}>
               <View style={styles.separatorLine} />
-              <Text style={styles.separatorText}>{t('auth.register.separator')}</Text>
+              <Text style={[styles.separatorText, { textAlign }]}>{t('auth.register.separator')}</Text>
               <View style={styles.separatorLine} />
             </View>
 
             {/* Social Login Buttons */}
-            <View style={styles.socialContainer}>
-              <TouchableOpacity style={styles.socialButton} activeOpacity={0.8}>
+            <View style={[styles.socialContainer, { flexDirection }]}>
+              <TouchableOpacity style={[styles.socialButton, { flexDirection }]} activeOpacity={0.8}>
                 <MaterialIcons name="apple" size={24} color="#FFFFFF" />
-                <Text style={styles.socialText}>{t('common.apple')}</Text>
+                <Text style={[styles.socialText, { textAlign }]}>{t('common.apple')}</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity style={styles.socialButton} activeOpacity={0.8}>
+              <TouchableOpacity style={[styles.socialButton, { flexDirection }]} activeOpacity={0.8}>
                 <MaterialIcons name="all-inclusive" size={24} color="#FFFFFF" />
-                <Text style={styles.socialText}>{t('common.google')}</Text>
+                <Text style={[styles.socialText, { textAlign }]}>{t('common.google')}</Text>
               </TouchableOpacity>
             </View>
 
             {/* Login Link */}
-            <View style={styles.loginContainer}>
-              <Text style={styles.loginText}>{t('auth.register.loginQuestion')} </Text>
+            <View style={[styles.loginContainer, { flexDirection }]}>
+              <Text style={[styles.loginText, { textAlign }]}>{t('auth.register.loginQuestion')} </Text>
               <TouchableOpacity onPress={() => router.push('/login')}>
-                <Text style={styles.loginLink}>{t('auth.register.loginLink')}</Text>
+                <Text style={[styles.loginLink, { textAlign }]}>{t('auth.register.loginLink')}</Text>
               </TouchableOpacity>
             </View>
           </ScrollView>
@@ -284,11 +288,9 @@ const styles = StyleSheet.create({
   subtitle: {
     color: '#FFFFFF',
     fontSize: 14,
-    textAlign: 'center',
     opacity: 0.8,
   },
   termsContainer: {
-    flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 24,
   },
@@ -298,7 +300,6 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: 'rgba(255, 255, 255, 0.3)',
     borderRadius: 4,
-    marginEnd: 8,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -310,13 +311,14 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 13,
     opacity: 0.8,
+    flex: 1,
+    marginStart: 8,
   },
   termsLink: {
     color: '#D4AF37',
     fontWeight: '700',
   },
   separator: {
-    flexDirection: 'row',
     alignItems: 'center',
     marginVertical: 24,
   },
@@ -332,7 +334,6 @@ const styles = StyleSheet.create({
     opacity: 0.8,
   },
   socialContainer: {
-    flexDirection: 'row',
     gap: 12,
     marginBottom: 32,
   },
@@ -343,7 +344,6 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255, 255, 255, 0.2)',
     borderRadius: 12,
     paddingVertical: 14,
-    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
@@ -354,7 +354,6 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   loginContainer: {
-    flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
   },

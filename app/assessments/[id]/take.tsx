@@ -19,10 +19,13 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { BlurView } from 'expo-blur';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Audio } from 'expo-av';
 import { GradientBackground } from '@/components/ui/GradientBackground';
-import { useLanguage } from '@/contexts/LanguageContext';
 import { getTrackColors } from '@/contexts/TrackContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { api, API_ENDPOINTS } from '@/utils/api';
+import { SkeletonLoader } from '@/components/ui/SkeletonLoader';
 
 interface QuestionOption {
   id: number;
@@ -73,9 +76,10 @@ interface AssessmentAttempt {
 
 export default function TakeAssessmentScreen() {
   const { t } = useTranslation();
-  const { isRTL } = useLanguage();
+  const { isRTL, textAlign, flexDirection } = useLanguage();
   const router = useRouter();
   const { id, attemptId } = useLocalSearchParams<{ id: string; attemptId: string }>();
+  const insets = useSafeAreaInsets();
   
   const [attempt, setAttempt] = useState<AssessmentAttempt | null>(null);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
@@ -89,21 +93,75 @@ export default function TakeAssessmentScreen() {
   const [saveNote, setSaveNote] = useState('');
   const [showExitModal, setShowExitModal] = useState(false);
   const [showNavigationBar, setShowNavigationBar] = useState(false);
+  const [feedbackData, setFeedbackData] = useState<Record<number, { is_correct: boolean }>>({});
+  const [assessmentType, setAssessmentType] = useState<string>('simulation');
+  const [pendingFeedback, setPendingFeedback] = useState<Set<number>>(new Set());
 
   const timerRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
   const slideAnim = useRef(new Animated.Value(0)).current;
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const progressAnim = useRef(new Animated.Value(0)).current;
   const timerPulseAnim = useRef(new Animated.Value(1)).current;
+  const nextButtonPulse = useRef(new Animated.Value(1)).current;
   const previousIndexRef = useRef(0);
   const screenWidth = Dimensions.get('window').width;
+  
+  // Sound refs
+  const successSound = useRef<Audio.Sound | null>(null);
+  const errorSound = useRef<Audio.Sound | null>(null);
 
   useEffect(() => {
     fetchAttempt();
+    loadSounds();
+    
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
+      unloadSounds();
     };
   }, [attemptId]);
+  
+  // تحميل الأصوات
+  const loadSounds = async () => {
+    try {
+      const { sound: success } = await Audio.Sound.createAsync(
+        require('@/assets/sounds/success.mp3')
+      );
+      successSound.current = success;
+      
+      const { sound: error } = await Audio.Sound.createAsync(
+        require('@/assets/sounds/error.mp3')
+      );
+      errorSound.current = error;
+    } catch (error) {
+      console.error('Error loading sounds:', error);
+    }
+  };
+  
+  // تفريغ الأصوات من الذاكرة
+  const unloadSounds = async () => {
+    try {
+      if (successSound.current) {
+        await successSound.current.unloadAsync();
+      }
+      if (errorSound.current) {
+        await errorSound.current.unloadAsync();
+      }
+    } catch (error) {
+      console.error('Error unloading sounds:', error);
+    }
+  };
+  
+  // تشغيل الصوت
+  const playSound = async (isCorrect: boolean) => {
+    try {
+      const sound = isCorrect ? successSound.current : errorSound.current;
+      if (sound) {
+        await sound.replayAsync();
+      }
+    } catch (error) {
+      console.error('Error playing sound:', error);
+    }
+  };
 
   useEffect(() => {
     if (timeRemaining > 0) {
@@ -146,6 +204,28 @@ export default function TakeAssessmentScreen() {
     }
   }, [timeRemaining]);
 
+  // Next button pulse animation في diagnostic/periodic mode عند تفعيله
+  useEffect(() => {
+    if (!attempt || (assessmentType !== 'diagnostic' && assessmentType !== 'periodic')) return;
+    
+    const currentQuestionId = attempt.assessment.items?.[currentQuestionIndex]?.question.id;
+    if (currentQuestionId && selectedOptions[currentQuestionId]) {
+      // الزر أصبح متاحاً - عمل pulse واحد للفت الانتباه
+      Animated.sequence([
+        Animated.timing(nextButtonPulse, {
+          toValue: 1.1,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(nextButtonPulse, {
+          toValue: 1,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+  }, [selectedOptions, currentQuestionIndex, assessmentType]);
+
   const fetchAttempt = async () => {
     try {
       setLoading(true);
@@ -187,6 +267,22 @@ export default function TakeAssessmentScreen() {
         
         setAttempt(transformedAttempt);
         setTimeRemaining(attemptData.time_remaining_sec || transformedAttempt.assessment.total_time_min * 60);
+        
+        // حفظ نوع الاختبار - مع fallback من الاسم
+        let type = attemptData.assessment?.type;
+        
+        // إذا ما كان موجود، نحدد من الاسم
+        if (!type) {
+          const assessmentName = (attemptData.assessment?.name || '').toLowerCase();
+          if (assessmentName.includes('سريع') || assessmentName.includes('تشخيصي') || assessmentName.includes('diagnostic')) {
+            type = 'diagnostic';
+          } else {
+            type = 'simulation';
+          }
+        }
+        
+        console.log('Setting assessment type:', type, 'from API or name:', attemptData.assessment?.name);
+        setAssessmentType(type);
         
         // تحميل الإجابات المحفوظة
         if (attemptData.saved_answers) {
@@ -255,8 +351,8 @@ export default function TakeAssessmentScreen() {
     // تحديد اتجاه الـ slide بناءً على الحركة (للأمام أو للخلف)
     const isMovingForward = currentQuestionIndex > previousIndexRef.current;
     const slideDirection = isRTL 
-      ? (isMovingForward ? -screenWidth : screenWidth) // RTL: عكس الاتجاه
-      : (isMovingForward ? screenWidth : -screenWidth); // LTR: عادي
+      ? (isMovingForward ? screenWidth : -screenWidth) // RTL: من اليسار
+      : (isMovingForward ? -screenWidth : screenWidth); // LTR: من اليمين
     
     // Reset position
     slideAnim.setValue(slideDirection);
@@ -319,18 +415,62 @@ export default function TakeAssessmentScreen() {
       const additionalTime = Math.floor((now - questionStartTime) / 1000);
       const totalTimeSpent = (questionTimeSpent[questionId] || 0) + additionalTime;
       
+      // تحديد ما إذا كنا ننتظر feedback (في diagnostic/periodic mode فقط)
+      const willShowFeedback = (assessmentType === 'diagnostic' || assessmentType === 'periodic');
+      
+      // إضافة للـ pending feedback إذا كنا ننتظر feedback
+      if (willShowFeedback) {
+        setPendingFeedback((prev) => new Set(prev).add(questionId));
+      }
+      
       // Update immediately for smooth UX
       setSelectedOptions((prev) => ({
         ...prev,
         [questionId]: optionId,
       }));
       
-      await api.post(API_ENDPOINTS.ASSESSMENT_SAVE_RESPONSE(attemptId!), {
-        question_id: questionId,
-        selected_option_id: optionId,
-        flagged: flagged,
-        time_spent_sec: totalTimeSpent,
-      });
+      const response = await api.post<{ ok: boolean; data: any }>(
+        API_ENDPOINTS.ASSESSMENT_SAVE_RESPONSE(attemptId!), 
+        {
+          question_id: questionId,
+          selected_option_id: optionId,
+          flagged: flagged,
+          time_spent_sec: totalTimeSpent,
+        }
+      );
+      
+      // إظهار feedback إذا كان النوع diagnostic أو periodic
+      console.log('Assessment Type:', assessmentType);
+      console.log('Response:', response);
+      
+      if (response && response.data && response.data.show_feedback) {
+        console.log('Showing feedback - is_correct:', response.data.is_correct);
+        
+        // تشغيل الصوت
+        playSound(response.data.is_correct);
+        
+        setFeedbackData((prev) => ({
+          ...prev,
+          [questionId]: {
+            is_correct: response.data.is_correct,
+          },
+        }));
+        
+        // إزالة من pending feedback
+        setPendingFeedback((prev) => {
+          const newSet = new Set(prev);
+          newSet.delete(questionId);
+          return newSet;
+        });
+      } else {
+        console.log('No feedback to show');
+        // إزالة من pending feedback حتى لو لم يكن هناك feedback
+        setPendingFeedback((prev) => {
+          const newSet = new Set(prev);
+          newSet.delete(questionId);
+          return newSet;
+        });
+      }
       
       // تحديث الوقت المحفوظ
       setQuestionTimeSpent((prev) => ({
@@ -340,8 +480,19 @@ export default function TakeAssessmentScreen() {
       
       // إعادة تعيين وقت البدء
       setQuestionStartTime(Date.now());
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error saving answer:', error);
+      
+      // عرض رسالة خطأ واضحة للمستخدم
+      const errorMessage = error?.message || error?.response?.data?.error?.message || 'حدث خطأ في حفظ الإجابة';
+      Alert.alert('خطأ', errorMessage);
+      
+      // إزالة من pending feedback في حالة الخطأ
+      setPendingFeedback((prev) => {
+        const newSet = new Set(prev);
+        newSet.delete(questionId);
+        return newSet;
+      });
     }
   };
 
@@ -367,19 +518,33 @@ export default function TakeAssessmentScreen() {
   const handleSaveQuestion = async () => {
     try {
       const currentQuestion = attempt?.assessment.items?.[currentQuestionIndex]?.question;
+      if (!currentQuestion?.id) {
+        Alert.alert('خطأ', 'لا يمكن حفظ السؤال');
+        return;
+      }
+
       await api.post(API_ENDPOINTS.SAVE_QUESTION, {
-        question_id: currentQuestion?.id,
-        note: saveNote,
+        question_id: currentQuestion.id,
+        note: saveNote || undefined,
         assessment_attempt_id: attemptId,
-        importance: 'med',
+        // importance removed - field no longer exists
       });
       
       Alert.alert('✅ تم الحفظ', 'تم حفظ السؤال في مكتبتك الشخصية');
       setSaveModal(false);
       setSaveNote('');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error saving question:', error);
-      Alert.alert('خطأ', 'حدث خطأ في حفظ السؤال');
+      
+      // Handle specific error messages
+      let errorMessage = 'حدث خطأ في حفظ السؤال';
+      if (error?.message?.includes('already saved') || error?.message?.includes('ALREADY_SAVED')) {
+        errorMessage = 'هذا السؤال محفوظ مسبقاً في مكتبتك';
+      } else if (error?.message) {
+        errorMessage = error.message;
+      }
+      
+      Alert.alert('خطأ', errorMessage);
     }
   };
 
@@ -494,12 +659,63 @@ export default function TakeAssessmentScreen() {
   };
 
   if (loading || !attempt) {
+    const trackColors = getTrackColors(null);
     return (
-      <GradientBackground>
+      <GradientBackground colors={trackColors.gradient}>
+        <StatusBar barStyle="light-content" />
         <SafeAreaView style={styles.safeArea}>
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#FFFFFF" />
+          {/* Header - Icons Row Skeleton */}
+          <View style={[styles.headerIconsRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+            <SkeletonLoader width={40} height={40} borderRadius={20} />
+            <SkeletonLoader width={40} height={40} borderRadius={20} />
           </View>
+
+          {/* Header - Content Skeleton */}
+          <View style={styles.headerContent}>
+            <SkeletonLoader width={70} height={70} borderRadius={12} style={{ marginBottom: 6 }} />
+            <SkeletonLoader width="60%" height={17} borderRadius={6} style={{ marginBottom: 8 }} />
+            <SkeletonLoader width={120} height={16} borderRadius={8} />
+          </View>
+
+          {/* Progress Bar Skeleton */}
+          <View style={styles.progressSection}>
+            <SkeletonLoader width={60} height={13} borderRadius={6} style={{ marginBottom: 6, alignSelf: isRTL ? 'flex-start' : 'flex-end' }} />
+            <View style={[styles.progressBar, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+              <SkeletonLoader width="45%" height={5} borderRadius={8} />
+            </View>
+          </View>
+
+          {/* Content Skeleton */}
+          <View style={{ flex: 1, paddingHorizontal: 16, paddingTop: 16 }}>
+
+            {/* Question Card Skeleton */}
+            <View style={styles.questionCard}>
+              <SkeletonLoader width="100%" height={16} borderRadius={6} style={{ marginBottom: 8 }} />
+              <SkeletonLoader width="95%" height={16} borderRadius={6} style={{ marginBottom: 8 }} />
+              <SkeletonLoader width="85%" height={16} borderRadius={6} />
+            </View>
+
+            {/* Options Skeleton */}
+            <View style={styles.optionsContainer}>
+              <SkeletonLoader width="100%" height={56} borderRadius={12} />
+              <SkeletonLoader width="100%" height={56} borderRadius={12} />
+              <SkeletonLoader width="100%" height={56} borderRadius={12} />
+              <SkeletonLoader width="100%" height={56} borderRadius={12} />
+            </View>
+          </View>
+
+          {/* Bottom Navigation Skeleton */}
+          <BlurView intensity={90} tint="dark" style={styles.bottomNavBlur}>
+            <View style={[styles.bottomNavContainer, { paddingBottom: Math.max(insets.bottom, 20), flexDirection }]}>
+              <SkeletonLoader width={52} height={52} borderRadius={26} />
+              <SkeletonLoader width={52} height={52} borderRadius={26} />
+              <View style={styles.centerButtonContainer}>
+                <SkeletonLoader width={64} height={64} borderRadius={32} />
+              </View>
+              <SkeletonLoader width={52} height={52} borderRadius={26} />
+              <SkeletonLoader width={52} height={52} borderRadius={26} />
+            </View>
+          </BlurView>
         </SafeAreaView>
       </GradientBackground>
     );
@@ -561,8 +777,8 @@ export default function TakeAssessmentScreen() {
       <SafeAreaView style={styles.safeArea}>
         {/* Header - Icons Row */}
         <View style={[styles.headerIconsRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-          <TouchableOpacity onPress={() => {}} style={styles.headerButton}>
-            <MaterialIcons name="lightbulb-outline" size={24} color="#FFD700" />
+          <TouchableOpacity onPress={() => setSaveModal(true)} style={styles.headerButton}>
+            <MaterialIcons name="bookmark-outline" size={24} color="#D4AF37" />
           </TouchableOpacity>
           
           <TouchableOpacity onPress={() => setShowExitModal(true)} style={styles.headerButton}>
@@ -601,10 +817,10 @@ export default function TakeAssessmentScreen() {
 
         {/* Progress Bar */}
         <View style={styles.progressSection}>
-          <Text style={styles.progressText}>
+          <Text style={[styles.progressText, { textAlign }]}>
             {currentQuestionIndex + 1} / {totalQuestions}
           </Text>
-          <View style={styles.progressBar}>
+          <View style={[styles.progressBar, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
             <Animated.View 
               style={[
                 styles.progressFill, 
@@ -628,18 +844,7 @@ export default function TakeAssessmentScreen() {
             paddingHorizontal: 16,
           }}
         >
-          {/* Question Tabs */}
-          <View style={[styles.tabsContainer, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-            <View style={[styles.tab, styles.tabActive]}>
-              <Text style={styles.tabText}>سؤال {currentQuestionIndex + 1}</Text>
-            </View>
-            <View style={styles.tab}>
-              <Text style={styles.tabTextInactive}>English Grammar</Text>
-            </View>
-            <View style={styles.tab}>
-              <Text style={styles.tabTextInactive}>اختيار من متعدد</Text>
-            </View>
-          </View>
+          {/* Question Tabs - إزالة التبويبات الثابتة غير المفيدة */}
 
           {/* Question Content */}
           <ScrollView 
@@ -648,7 +853,7 @@ export default function TakeAssessmentScreen() {
             showsVerticalScrollIndicator={false}
           >
             <View style={styles.questionCard}>
-              <Text style={[styles.questionText, { textAlign: isRTL ? 'right' : 'left' }]}>
+              <Text style={[styles.questionText, { textAlign }]}>
                 {currentQuestion.stem}
               </Text>
               
@@ -667,6 +872,30 @@ export default function TakeAssessmentScreen() {
                 .sort((a, b) => (a.option_order || 0) - (b.option_order || 0))
                 .map((option) => {
                   const isSelected = selectedOptions[currentQuestion.id] === option.id;
+                  const hasFeedback = feedbackData[currentQuestion.id] !== undefined && (assessmentType === 'diagnostic' || assessmentType === 'periodic');
+                  const isCorrect = feedbackData[currentQuestion.id]?.is_correct;
+                  const isPending = pendingFeedback.has(currentQuestion.id);
+                  
+                  // تحديد الألوان والأيقونات بناءً على feedback
+                  let iconName: any = null;
+                  let iconColor: string | undefined = undefined;
+                  const optionStyles: any[] = [styles.optionButton, { flexDirection }];
+                  
+                  if (hasFeedback && isSelected) {
+                    if (isCorrect) {
+                      optionStyles.push(styles.optionButtonCorrect);
+                      iconName = 'check-circle';
+                      iconColor = '#10B981';
+                    } else {
+                      optionStyles.push(styles.optionButtonWrong);
+                      iconName = 'cancel';
+                      iconColor = '#EF4444';
+                    }
+                  } else if (isSelected && !isPending) {
+                    // فقط أظهر selected state إذا لم نكن ننتظر feedback
+                    optionStyles.push(styles.optionButtonSelected);
+                  }
+                  
                   return (
                     <Animated.View
                       key={option.id}
@@ -675,28 +904,32 @@ export default function TakeAssessmentScreen() {
                       }}
                     >
                       <TouchableOpacity
-                        style={[
-                          styles.optionButton,
-                          isSelected && styles.optionButtonSelected,
-                        ]}
+                        style={optionStyles}
                         onPress={() => saveAnswer(currentQuestion.id, option.id)}
                         activeOpacity={0.7}
+                        disabled={hasFeedback}
                       >
                         <View style={[
                           styles.radioButton,
-                          isSelected && styles.radioButtonSelected,
+                          isSelected && !isPending && styles.radioButtonSelected,
+                          hasFeedback && isCorrect && isSelected && { borderColor: '#10B981', backgroundColor: '#10B981' },
+                          hasFeedback && !isCorrect && isSelected && { borderColor: '#EF4444', backgroundColor: '#EF4444' },
                         ]}>
-                          {isSelected && (
+                          {isSelected && !hasFeedback && !isPending && (
                             <View style={styles.radioButtonInner} />
                           )}
                         </View>
                         <Text style={[
                           styles.optionFullText,
                           isSelected && styles.optionFullTextSelected,
+                          { textAlign }
                         ]}>
                           {(option.label || option.option_label) && `${option.label || option.option_label}. `}
                           {option.content}
                         </Text>
+                        {iconName && (
+                          <MaterialIcons name={iconName} size={24} color={iconColor} style={{ marginStart: 8 }} />
+                        )}
                       </TouchableOpacity>
                     </Animated.View>
                   );
@@ -705,88 +938,153 @@ export default function TakeAssessmentScreen() {
           </ScrollView>
         </Animated.View>
 
-        {/* Bottom Actions */}
-        <View style={styles.bottomActions}>
-          <TouchableOpacity
-            style={[styles.actionButton, styles.saveButton]}
-            onPress={() => setSaveModal(true)}
-          >
-            <MaterialIcons name="bookmark-outline" size={18} color="#FFFFFF" />
-            <Text style={styles.actionButtonText}>حفظ</Text>
-          </TouchableOpacity>
+        {/* Bottom Navigation - Different for Diagnostic/Periodic vs Simulation */}
+        {(assessmentType === 'diagnostic' || assessmentType === 'periodic') ? (
+          /* Diagnostic/Periodic: Next Button Only - Luxurious Design */
+          <BlurView intensity={90} tint="dark" style={styles.bottomNavBlur}>
+            <View style={[styles.diagnosticBottomContainer, { paddingBottom: Math.max(insets.bottom, 20) }]}>
+              <Animated.View style={{ transform: [{ scale: nextButtonPulse }] }}>
+                <TouchableOpacity
+                  style={[
+                    styles.luxuryNextButton,
+                    { backgroundColor: trackColors.primary },
+                    !selectedOptions[currentQuestion.id] && styles.luxuryNextButtonDisabled
+                  ]}
+                  onPress={() => {
+                    if (currentQuestionIndex >= totalQuestions - 1) {
+                      // آخر سؤال - تسليم مباشر
+                      handleSubmit();
+                    } else {
+                      // الانتقال للسؤال التالي
+                      handleNext();
+                    }
+                  }}
+                  disabled={!selectedOptions[currentQuestion.id]}
+                  activeOpacity={0.8}
+                >
+                  <View style={[styles.luxuryNextButtonContent, { flexDirection }]}>
+                    <Text 
+                      style={styles.luxuryNextButtonText}
+                      allowFontScaling={false}
+                      numberOfLines={1}
+                    >
+                      {currentQuestionIndex >= totalQuestions - 1 ? 'إنهاء الاختبار' : 'التالي'}
+                    </Text>
+                    <View style={styles.luxuryNextButtonIcon}>
+                      <MaterialIcons 
+                        name={currentQuestionIndex >= totalQuestions - 1 ? "check-circle" : "arrow-back"}
+                        size={28} 
+                        color="#FFFFFF"
+                      />
+                    </View>
+                  </View>
+                  {!selectedOptions[currentQuestion.id] && (
+                    <View style={styles.luxuryButtonOverlay}>
+                      <MaterialIcons name="lock" size={26} color="rgba(255,255,255,0.6)" />
+                      <Text 
+                        style={styles.luxuryButtonOverlayText}
+                        allowFontScaling={false}
+                        numberOfLines={1}
+                      >
+                        اختر إجابة أولاً
+                      </Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              </Animated.View>
+            </View>
+          </BlurView>
+        ) : (
+          /* Simulation: Full Navigation */
+          <BlurView intensity={90} tint="dark" style={styles.bottomNavBlur}>
+            <View style={[styles.bottomNavContainer, { paddingBottom: Math.max(insets.bottom, 20), flexDirection }]}>
+              {/* Previous Button - Left */}
+              <TouchableOpacity
+                style={[
+                  styles.bottomNavButton,
+                  currentQuestionIndex === 0 && styles.bottomNavButtonDisabled
+                ]}
+                onPress={handlePrevious}
+                disabled={currentQuestionIndex === 0}
+              >
+                <MaterialIcons 
+                  name="arrow-forward" 
+                  size={26} 
+                  color={currentQuestionIndex === 0 ? "#666" : "#FFFFFF"}
+                />
+              </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[
-              styles.actionButton, 
-              styles.flagButton,
-              flaggedQuestions.has(currentQuestion.id) && { backgroundColor: '#F59E0B' }
-            ]}
-            onPress={() => toggleFlag(currentQuestion.id)}
-          >
-            <MaterialIcons 
-              name={flaggedQuestions.has(currentQuestion.id) ? "flag" : "outlined-flag"} 
-              size={18} 
-              color="#FFFFFF" 
-            />
-            <Text style={styles.actionButtonText}>
-              {flaggedQuestions.has(currentQuestion.id) ? 'معلّم' : 'تعليم'}
-            </Text>
-          </TouchableOpacity>
+              {/* Save Button */}
+              <TouchableOpacity
+                style={styles.bottomNavButton}
+                onPress={() => setSaveModal(true)}
+              >
+                <MaterialIcons name="bookmark-outline" size={26} color="#FFFFFF" />
+              </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[
-              styles.actionButton, 
-              styles.nextButton, 
-              { backgroundColor: trackColors.primary },
-              (currentQuestionIndex >= totalQuestions - 1 && answeredCount < totalQuestions) && styles.disabledButton
-            ]}
-            onPress={currentQuestionIndex >= totalQuestions - 1 ? () => {
-              // التحقق من أن جميع الأسئلة تم الإجابة عليها
-              if (answeredCount < totalQuestions) {
-                Alert.alert(
-                  '⚠️ تنبيه',
-                  `يجب الإجابة على جميع الأسئلة قبل التسليم.\nلديك ${answeredCount} من ${totalQuestions} إجابة.\nالمتبقي: ${totalQuestions - answeredCount} سؤال.`,
-                  [{ text: 'حسناً', style: 'default' }]
-                );
-                return;
-              }
-              
-              Alert.alert(
-                'إنهاء الاختبار',
-                `لديك ${answeredCount} من ${totalQuestions} إجابة. هل تريد التسليم؟`,
-                [
-                  { text: 'إلغاء', style: 'cancel' },
-                  { text: 'تسليم', onPress: handleSubmit, style: 'destructive' },
-                ]
-              );
-            } : handleNext}
-            disabled={currentQuestionIndex >= totalQuestions - 1 && answeredCount < totalQuestions}
-          >
-            <Text style={[
-              styles.actionButtonText,
-              (currentQuestionIndex >= totalQuestions - 1 && answeredCount < totalQuestions) && styles.disabledButtonText
-            ]}>
-              {currentQuestionIndex >= totalQuestions - 1 ? 'إنهاء الاختبار' : 'التالي'}
-            </Text>
-            <MaterialIcons 
-              name={currentQuestionIndex >= totalQuestions - 1 ? "check" : "arrow-back"} 
-              size={18} 
-              color={(currentQuestionIndex >= totalQuestions - 1 && answeredCount < totalQuestions) ? "#999" : "#FFFFFF"}
-              style={currentQuestionIndex >= totalQuestions - 1 ? {} : { transform: [{ scaleX: -1 }] }} 
-            />
-          </TouchableOpacity>
-        </View>
+              {/* Navigation Grid Toggle - CENTER - Elevated */}
+              <View style={styles.centerButtonContainer}>
+                <TouchableOpacity
+                  style={[styles.bottomNavButtonCenter, { backgroundColor: trackColors.primary }]}
+                  onPress={() => setShowNavigationBar(!showNavigationBar)}
+                >
+                  <MaterialIcons name="apps" size={30} color="#FFFFFF" />
+                </TouchableOpacity>
+              </View>
 
-        {/* Navigation Bar Toggle */}
-        <TouchableOpacity
-          style={[styles.navToggle, { backgroundColor: trackColors.primary }]}
-          onPress={() => setShowNavigationBar(!showNavigationBar)}
-        >
-          <MaterialIcons name="apps" size={22} color="#FFFFFF" />
-        </TouchableOpacity>
+              {/* Flag Button */}
+              <TouchableOpacity
+                style={[
+                  styles.bottomNavButton,
+                  flaggedQuestions.has(currentQuestion.id) && { backgroundColor: '#F59E0B' }
+                ]}
+                onPress={() => toggleFlag(currentQuestion.id)}
+              >
+                <MaterialIcons 
+                  name={flaggedQuestions.has(currentQuestion.id) ? "flag" : "outlined-flag"} 
+                  size={26} 
+                  color="#FFFFFF" 
+                />
+              </TouchableOpacity>
 
-        {/* Navigation Bar */}
-        {showNavigationBar && (
+              {/* Next/Submit Button - Right */}
+              <TouchableOpacity
+                style={[
+                  styles.bottomNavButton,
+                  currentQuestionIndex >= totalQuestions - 1 && styles.bottomNavButtonSubmit
+                ]}
+                onPress={currentQuestionIndex >= totalQuestions - 1 ? () => {
+                  if (answeredCount < totalQuestions) {
+                    Alert.alert(
+                      '⚠️ تنبيه',
+                      `يجب الإجابة على جميع الأسئلة قبل التسليم.\nلديك ${answeredCount} من ${totalQuestions} إجابة.\nالمتبقي: ${totalQuestions - answeredCount} سؤال.`,
+                      [{ text: 'حسناً', style: 'default' }]
+                    );
+                    return;
+                  }
+                  
+                  Alert.alert(
+                    'إنهاء الاختبار',
+                    `لديك ${answeredCount} من ${totalQuestions} إجابة. هل تريد التسليم؟`,
+                    [
+                      { text: 'إلغاء', style: 'cancel' },
+                      { text: 'تسليم', onPress: handleSubmit, style: 'destructive' },
+                    ]
+                  );
+                } : handleNext}
+              >
+                <MaterialIcons 
+                  name={currentQuestionIndex >= totalQuestions - 1 ? "check" : "arrow-back"} 
+                  size={26} 
+                  color="#FFFFFF"
+                />
+              </TouchableOpacity>
+            </View>
+          </BlurView>
+        )}
+
+        {/* Navigation Bar - Only for Simulation Mode */}
+        {showNavigationBar && assessmentType !== 'diagnostic' && assessmentType !== 'periodic' && (
           <BlurView 
             intensity={80} 
             tint="dark"
@@ -799,7 +1097,7 @@ export default function TakeAssessmentScreen() {
             ]}
           >
             {/* Close Button */}
-            <View style={styles.navHeader}>
+            <View style={[styles.navHeader, { flexDirection }]}>
               <Text style={styles.navHeaderTitle}>الأسئلة</Text>
               <TouchableOpacity
                 style={[styles.closeNavButton, { backgroundColor: `${trackColors.primary}30`, borderColor: `${trackColors.primary}60` }]}
@@ -813,7 +1111,7 @@ export default function TakeAssessmentScreen() {
               contentContainerStyle={styles.navigationContent}
               showsVerticalScrollIndicator={false}
             >
-              <View style={styles.navigationGrid}>
+              <View style={[styles.navigationGrid, { flexDirection }]}>
                 {attempt.assessment.items!.map((item, index) => {
                   const isAnswered = selectedOptions[item.question.id] !== undefined;
                   const isFlagged = flaggedQuestions.has(item.question.id);
@@ -836,16 +1134,16 @@ export default function TakeAssessmentScreen() {
                 })}
               </View>
               
-              <View style={styles.navLegend}>
-                <View style={styles.legendItem}>
+              <View style={[styles.navLegend, { flexDirection }]}>
+                <View style={[styles.legendItem, { flexDirection }]}>
                   <View style={[styles.legendDot, { backgroundColor: '#10B981' }]} />
                   <Text style={styles.legendText}>محلول ({answeredCount})</Text>
                 </View>
-                <View style={styles.legendItem}>
+                <View style={[styles.legendItem, { flexDirection }]}>
                   <View style={[styles.legendDot, { backgroundColor: '#F59E0B' }]} />
                   <Text style={styles.legendText}>معلّم ({flaggedQuestions.size})</Text>
                 </View>
-                <View style={styles.legendItem}>
+                <View style={[styles.legendItem, { flexDirection }]}>
                   <View style={[styles.legendDot, { backgroundColor: 'rgba(255,255,255,0.2)' }]} />
                   <Text style={styles.legendText}>متبقي ({totalQuestions - answeredCount})</Text>
                 </View>
@@ -896,20 +1194,30 @@ export default function TakeAssessmentScreen() {
         {/* Save Modal */}
         <Modal visible={showSaveModal} transparent animationType="fade">
           <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
-              <View style={styles.modalHeader}>
-                <MaterialIcons name="bookmark" size={24} color={trackColors.primary} />
+            <TouchableOpacity 
+              style={StyleSheet.absoluteFill} 
+              activeOpacity={1} 
+              onPress={() => setSaveModal(false)}
+            />
+            <BlurView intensity={80} tint="dark" style={styles.modalContent}>
+              <View style={[styles.modalHeader, { flexDirection }]}>
+                <View style={[styles.modalIconContainer, { backgroundColor: `${trackColors.primary}30` }]}>
+                  <MaterialIcons name="bookmark" size={28} color={trackColors.primary} />
+                </View>
                 <Text style={styles.modalTitle}>حفظ السؤال</Text>
-                <TouchableOpacity onPress={() => setSaveModal(false)}>
-                  <MaterialIcons name="close" size={24} color="#FFFFFF" />
+                <TouchableOpacity 
+                  onPress={() => setSaveModal(false)}
+                  style={styles.modalCloseButton}
+                >
+                  <MaterialIcons name="close" size={24} color="#8FA4C0" />
                 </TouchableOpacity>
               </View>
               
-              <Text style={styles.modalLabel}>أضف ملاحظة (اختياري):</Text>
+              <Text style={[styles.modalLabel, { textAlign }]}>أضف ملاحظة (اختياري):</Text>
               <TextInput
-                style={styles.modalInput}
+                style={[styles.modalInput, { textAlign }]}
                 placeholder="اكتب ملاحظتك هنا..."
-                placeholderTextColor="rgba(255,255,255,0.5)"
+                placeholderTextColor="#8FA4C0"
                 value={saveNote}
                 onChangeText={setSaveNote}
                 multiline
@@ -918,25 +1226,35 @@ export default function TakeAssessmentScreen() {
               />
               
               <TouchableOpacity
-                style={[styles.modalButton, { backgroundColor: trackColors.primary }]}
+                style={[styles.modalButton, { backgroundColor: trackColors.primary, flexDirection }]}
                 onPress={handleSaveQuestion}
               >
-                <MaterialIcons name="save" size={20} color="#FFFFFF" />
-                <Text style={styles.modalButtonText}>حفظ</Text>
+                <MaterialIcons name="save" size={22} color="#FFFFFF" />
+                <Text style={styles.modalButtonText}>حفظ السؤال</Text>
               </TouchableOpacity>
-            </View>
+            </BlurView>
           </View>
         </Modal>
 
         {/* Exit Modal */}
         <Modal visible={showExitModal} transparent animationType="fade">
           <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
-              <View style={styles.modalHeader}>
-                <MaterialIcons name="warning" size={24} color="#EF4444" />
+            <TouchableOpacity 
+              style={StyleSheet.absoluteFill} 
+              activeOpacity={1} 
+              onPress={() => setShowExitModal(false)}
+            />
+            <BlurView intensity={80} tint="dark" style={styles.modalContent}>
+              <View style={[styles.modalHeader, { flexDirection }]}>
+                <View style={[styles.modalIconContainer, { backgroundColor: 'rgba(239, 68, 68, 0.2)' }]}>
+                  <MaterialIcons name="warning" size={28} color="#EF4444" />
+                </View>
                 <Text style={styles.modalTitle}>تحذير</Text>
-                <TouchableOpacity onPress={() => setShowExitModal(false)}>
-                  <MaterialIcons name="close" size={24} color="#FFFFFF" />
+                <TouchableOpacity 
+                  onPress={() => setShowExitModal(false)}
+                  style={styles.modalCloseButton}
+                >
+                  <MaterialIcons name="close" size={24} color="#8FA4C0" />
                 </TouchableOpacity>
               </View>
               
@@ -944,22 +1262,23 @@ export default function TakeAssessmentScreen() {
                 الخروج من الاختبار سيؤدي إلى إلغاء المحاولة. هل أنت متأكد؟
               </Text>
               
-              <View style={styles.modalActions}>
+              <View style={[styles.modalActions, { flexDirection }]}>
                 <TouchableOpacity
-                  style={[styles.modalActionButton, { backgroundColor: 'rgba(255,255,255,0.1)' }]}
+                  style={[styles.modalActionButton, styles.modalActionButtonSecondary, { flexDirection }]}
                   onPress={() => setShowExitModal(false)}
                 >
                   <Text style={styles.modalActionText}>إلغاء</Text>
                 </TouchableOpacity>
                 
                 <TouchableOpacity
-                  style={[styles.modalActionButton, { backgroundColor: '#EF4444' }]}
+                  style={[styles.modalActionButton, styles.modalActionButtonDanger, { flexDirection }]}
                   onPress={handleExit}
                 >
+                  <MaterialIcons name="exit-to-app" size={20} color="#FFFFFF" />
                   <Text style={styles.modalActionText}>تأكيد الخروج</Text>
                 </TouchableOpacity>
               </View>
-            </View>
+            </BlurView>
           </View>
         </Modal>
       </SafeAreaView>
@@ -1040,6 +1359,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.25)',
     borderRadius: 8,
     overflow: 'hidden',
+    flexDirection: 'row',
   },
   progressFill: {
     height: '100%',
@@ -1048,7 +1368,6 @@ const styles = StyleSheet.create({
   progressText: {
     color: '#FFFFFF',
     fontSize: 13,
-    textAlign: 'right',
     marginBottom: 6,
     fontWeight: '600',
   },
@@ -1119,7 +1438,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: 'rgba(255, 255, 255, 0.12)',
     borderRadius: 12,
-    padding: 14,
+    padding: 16,
+    gap: 12,
     borderWidth: 2,
     borderColor: 'rgba(255, 255, 255, 0.25)',
     minHeight: 56,
@@ -1129,13 +1449,22 @@ const styles = StyleSheet.create({
     borderColor: '#10B981',
     borderWidth: 2.5,
   },
+  optionButtonCorrect: {
+    backgroundColor: 'rgba(16, 185, 129, 0.3)',
+    borderColor: '#10B981',
+    borderWidth: 3,
+  },
+  optionButtonWrong: {
+    backgroundColor: 'rgba(239, 68, 68, 0.3)',
+    borderColor: '#EF4444',
+    borderWidth: 3,
+  },
   radioButton: {
     width: 22,
     height: 22,
     borderRadius: 11,
     borderWidth: 2,
     borderColor: 'rgba(255, 255, 255, 0.6)',
-    marginRight: 12,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -1171,56 +1500,53 @@ const styles = StyleSheet.create({
   optionFullTextSelected: {
     fontWeight: '600',
   },
-  bottomActions: {
-    flexDirection: 'row',
-    gap: 10,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.2)',
-  },
-  actionButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 12,
-    borderRadius: 12,
-  },
-  saveButton: {
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.3)',
-  },
-  flagButton: {
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.3)',
-  },
-  nextButton: {
-    // backgroundColor set dynamically
-  },
-  actionButtonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  navToggle: {
+  bottomNavBlur: {
     position: 'absolute',
-    bottom: 85,
-    right: 16,
-    width: 50,
-    height: 50,
-    borderRadius: 25,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    borderTopWidth: 0.5,
+    borderTopColor: 'rgba(255, 255, 255, 0.15)',
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+  },
+  bottomNavContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'flex-end',
+    paddingTop: 8,
+    paddingHorizontal: 16,
+  },
+  bottomNavButton: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
     justifyContent: 'center',
     alignItems: 'center',
+    marginBottom: 0,
+  },
+  centerButtonContainer: {
+    marginBottom: 20,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+    elevation: 12,
+  },
+  bottomNavButtonCenter: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 4,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  bottomNavButtonDisabled: {
+    opacity: 0.3,
+  },
+  bottomNavButtonSubmit: {
+    backgroundColor: '#10B981',
   },
   navigationBar: {
     position: 'absolute',
@@ -1271,6 +1597,7 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 8,
     marginBottom: 20,
+    justifyContent: 'flex-start',
   },
   navButton: {
     width: 48,
@@ -1316,7 +1643,7 @@ const styles = StyleSheet.create({
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
@@ -1324,49 +1651,80 @@ const styles = StyleSheet.create({
   modalContent: {
     width: '100%',
     maxWidth: 400,
-    backgroundColor: 'rgba(27, 54, 93, 0.95)',
-    borderRadius: 20,
+    borderRadius: 24,
     padding: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(212, 175, 55, 0.3)',
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 10,
   },
   modalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 20,
+    marginBottom: 24,
+    gap: 12,
+  },
+  modalIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalCloseButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(143, 164, 192, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   modalTitle: {
     color: '#FFFFFF',
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '700',
     flex: 1,
     textAlign: 'center',
   },
   modalLabel: {
-    color: 'rgba(255, 255, 255, 0.8)',
-    fontSize: 14,
-    marginBottom: 8,
+    color: '#D4AF37',
+    fontSize: 15,
+    fontWeight: '600',
+    marginBottom: 12,
   },
   modalInput: {
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    borderRadius: 12,
-    padding: 12,
+    backgroundColor: 'rgba(143, 164, 192, 0.15)',
+    borderRadius: 14,
+    padding: 16,
     color: '#FFFFFF',
-    fontSize: 14,
-    minHeight: 80,
-    marginBottom: 16,
+    fontSize: 15,
+    minHeight: 100,
+    marginBottom: 20,
     textAlignVertical: 'top',
+    borderWidth: 1,
+    borderColor: 'rgba(212, 175, 55, 0.3)',
   },
   modalButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 14,
-    borderRadius: 12,
+    gap: 10,
+    paddingVertical: 16,
+    borderRadius: 14,
+    shadowColor: '#10B981',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 5,
   },
   modalButtonText: {
     color: '#FFFFFF',
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: '600',
   },
   disabledButton: {
@@ -1378,25 +1736,40 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   modalMessage: {
-    color: 'rgba(255, 255, 255, 0.9)',
-    fontSize: 15,
-    lineHeight: 22,
-    marginBottom: 24,
+    color: '#FFFFFF',
+    fontSize: 16,
+    lineHeight: 26,
+    marginBottom: 28,
   },
   modalActions: {
-    flexDirection: 'row',
     gap: 12,
   },
   modalActionButton: {
     flex: 1,
-    paddingVertical: 14,
-    borderRadius: 12,
+    flexDirection: 'row',
+    paddingVertical: 16,
+    borderRadius: 14,
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  modalActionButtonSecondary: {
+    backgroundColor: 'rgba(143, 164, 192, 0.3)',
+    borderWidth: 1,
+    borderColor: 'rgba(143, 164, 192, 0.5)',
+  },
+  modalActionButtonDanger: {
+    backgroundColor: '#EF4444',
+    shadowColor: '#EF4444',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 5,
   },
   modalActionText: {
     color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '600',
+    fontSize: 16,
+    fontWeight: '700',
   },
   errorText: {
     color: '#FFFFFF',
@@ -1415,6 +1788,75 @@ const styles = StyleSheet.create({
     color: '#1B365D',
     fontSize: 16,
     fontWeight: '700',
+  },
+  // Diagnostic Mode - Luxury Next Button Styles
+  diagnosticBottomContainer: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+  },
+  luxuryNextButton: {
+    width: '100%',
+    height: 68,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.5,
+    shadowRadius: 16,
+    elevation: 12,
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  luxuryNextButtonDisabled: {
+    shadowOpacity: 0.2,
+  },
+  luxuryNextButtonContent: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    paddingHorizontal: 16,
+  },
+  luxuryNextButtonText: {
+    color: '#FFFFFF',
+    fontSize: 20,
+    fontWeight: '700',
+    textShadowColor: 'rgba(0, 0, 0, 0.3)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 4,
+    textAlign: 'center',
+    includeFontPadding: false,
+  },
+  luxuryNextButtonIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  luxuryButtonOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.92)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    borderRadius: 20,
+    zIndex: 10,
+  },
+  luxuryButtonOverlayText: {
+    color: 'rgba(255, 255, 255, 0.95)',
+    fontSize: 16,
+    fontWeight: '600',
+    textAlign: 'center',
+    includeFontPadding: false,
   },
 });
 

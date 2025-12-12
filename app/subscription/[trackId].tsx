@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   StyleSheet,
   SafeAreaView,
@@ -8,12 +8,19 @@ import {
   ScrollView,
   ActivityIndicator,
   StatusBar,
+  Animated,
+  Dimensions,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import * as Haptics from 'expo-haptics';
 import { GradientBackground } from '@/components/ui/GradientBackground';
 import { getTrackColors } from '@/contexts/TrackContext';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { api, API_ENDPOINTS } from '@/utils/api';
+
+const { width } = Dimensions.get('window');
 
 interface Track {
   id: number;
@@ -28,7 +35,7 @@ interface SubscriptionPlan {
   plan_type: 'personal' | 'family';
   name: string;
   description: string;
-  price: number | string; // Can come as string from API
+  price: number | string;
   duration_days: number;
   features: string[];
 }
@@ -44,9 +51,87 @@ interface UserSubscription {
   };
 }
 
+// Marketing content for each track
+const trackMarketingContent = {
+  1: { // قدرات
+    heroTitle: 'اكتشف قدراتك الحقيقية',
+    heroSubtitle: 'اختبار القدرات العامة - رحلتك نحو النجاح تبدأ من هنا',
+    stats: [
+      { icon: 'school', label: 'دروس تفاعلية', value: '500+' },
+      { icon: 'quiz', label: 'أسئلة محاكاة', value: '10,000+' },
+      { icon: 'trending-up', label: 'نسبة النجاح', value: '95%' },
+      { icon: 'people', label: 'طلاب نشطون', value: '50,000+' },
+    ],
+    features: [
+      'وصول غير محدود لجميع الدروس التفاعلية',
+      'أسئلة محاكاة حقيقية للاختبار',
+      'تتبع تقدمك بدقة مع تحليلات متقدمة',
+      'تقارير تفصيلية أسبوعية وشهرية',
+      'نظام إتقان المهارات (IRT)',
+      'لوحة صدارة تنافسية',
+      'إنجازات وبادجات حصرية',
+    ],
+    benefits: [
+      'حسّن قدراتك التحليلية والاستدلالية',
+      'استعد بثقة للاختبار النهائي',
+      'احصل على نتائج مضمونة',
+    ],
+  },
+  2: { // تحصيلي
+    heroTitle: 'احقق أعلى الدرجات',
+    heroSubtitle: 'الاختبار التحصيلي - اجتياز المواد الدراسية بامتياز',
+    stats: [
+      { icon: 'book', label: 'مواد شاملة', value: '6+' },
+      { icon: 'assignment', label: 'اختبارات محاكاة', value: '200+' },
+      { icon: 'star', label: 'نسبة التفوق', value: '92%' },
+      { icon: 'groups', label: 'طلاب متفوقون', value: '45,000+' },
+    ],
+    features: [
+      'دروس شاملة لجميع المواد الدراسية',
+      'اختبارات محاكاة حقيقية',
+      'شرح مفصل لكل سؤال',
+      'تتبع أدائك في كل مادة',
+      'خطط دراسية مخصصة',
+      'نظام مراجعة ذكي',
+      'إحصائيات تفصيلية',
+    ],
+    benefits: [
+      'قوّي تحصيلك في جميع المواد',
+      'احصل على أعلى الدرجات',
+      'كن جاهزاً للاختبار النهائي',
+    ],
+  },
+  3: { // STEP
+    heroTitle: 'أتقن اللغة الإنجليزية',
+    heroSubtitle: 'اختبار كفايات اللغة الإنجليزية - خطوتك الأولى نحو العالمية',
+    stats: [
+      { icon: 'translate', label: 'مستويات متقدمة', value: '5+' },
+      { icon: 'record-voice-over', label: 'تدريبات صوتية', value: '1,000+' },
+      { icon: 'verified', label: 'نسبة النجاح', value: '88%' },
+      { icon: 'public', label: 'طلاب دوليون', value: '30,000+' },
+    ],
+    features: [
+      'دروس تفاعلية لجميع المهارات',
+      'تدريبات على القراءة والكتابة',
+      'اختبارات استماع حقيقية',
+      'قواعد شاملة مع أمثلة',
+      'مفردات متقدمة',
+      'اختبارات محاكاة STEP',
+      'تتبع تقدمك في كل مهارة',
+    ],
+    benefits: [
+      'حسّن مستواك في اللغة الإنجليزية',
+      'احصل على شهادة معتمدة',
+      'افتح آفاقاً جديدة لمستقبلك',
+    ],
+  },
+};
+
 export default function SubscriptionScreen() {
   const router = useRouter();
   const { trackId } = useLocalSearchParams();
+  const { textAlign, flexDirection } = useLanguage();
+  const { user } = useAuth();
   const [track, setTrack] = useState<Track | null>(null);
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const [subscription, setSubscription] = useState<UserSubscription | null>(null);
@@ -54,11 +139,41 @@ export default function SubscriptionScreen() {
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<number | null>(null);
 
+  // Animations
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(50)).current;
+  const scaleAnim = useRef(new Animated.Value(0.9)).current;
+
   const trackColors = getTrackColors(track?.id || null);
+  const marketingContent = trackMarketingContent[track?.id as keyof typeof trackMarketingContent] || trackMarketingContent[1];
 
   useEffect(() => {
     fetchData();
   }, [trackId]);
+
+  useEffect(() => {
+    if (!loading) {
+      Animated.parallel([
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+        Animated.spring(slideAnim, {
+          toValue: 0,
+          tension: 50,
+          friction: 8,
+          useNativeDriver: true,
+        }),
+        Animated.spring(scaleAnim, {
+          toValue: 1,
+          tension: 50,
+          friction: 8,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+  }, [loading]);
 
   const fetchData = async () => {
     try {
@@ -77,11 +192,24 @@ export default function SubscriptionScreen() {
         API_ENDPOINTS.SUBSCRIPTION_PLANS(trackId as string)
       );
       if (plansResponse && plansResponse.ok && plansResponse.data) {
-        setPlans(plansResponse.data);
-        // Auto-select first personal plan
-        const firstPersonalPlan = plansResponse.data.find(p => p.plan_type === 'personal');
-        if (firstPersonalPlan) {
-          setSelectedPlan(firstPersonalPlan.id);
+        // Filter to show only monthly (30 days) and yearly (365 days) plans
+        // Also filter by plan_type to only show personal plans
+        const filteredPlans = plansResponse.data.filter(
+          plan => (plan.duration_days === 30 || plan.duration_days === 365) && plan.plan_type === 'personal'
+        );
+        
+        // Sort: monthly first, then yearly
+        const sortedPlans = filteredPlans.sort((a, b) => {
+          if (a.duration_days === 30) return -1;
+          if (b.duration_days === 30) return 1;
+          return 0;
+        });
+        
+        setPlans(sortedPlans);
+        // Auto-select monthly plan
+        const monthlyPlan = sortedPlans.find(p => p.duration_days === 30);
+        if (monthlyPlan) {
+          setSelectedPlan(monthlyPlan.id);
         }
       }
 
@@ -104,12 +232,27 @@ export default function SubscriptionScreen() {
   };
 
   const handleStartPayment = async () => {
-    if (!selectedPlan) return;
+    if (!selectedPlan) {
+      alert('الرجاء اختيار خطة اشتراك');
+      return;
+    }
+
+    // Check if user is authenticated
+    if (!user) {
+      alert('الرجاء تسجيل الدخول أولاً');
+      router.push('/(auth)/login');
+      return;
+    }
+
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
     try {
       setPaymentLoading(true);
       
-      // Create payment and get Paylink invoice URL
+      console.log('Creating payment for plan:', selectedPlan);
+      console.log('API Endpoint:', API_ENDPOINTS.CREATE_PAYMENT(selectedPlan));
+      console.log('User authenticated:', !!user);
+      
       const response = await api.post<{ ok: boolean; data: any }>(
         API_ENDPOINTS.CREATE_PAYMENT(selectedPlan),
         {
@@ -118,22 +261,36 @@ export default function SubscriptionScreen() {
         }
       );
 
+      console.log('Payment creation response:', response);
+
       if (response && response.ok && response.data) {
-        const { invoice_url, payment_id } = response.data;
-        
-        // Navigate to payment webview
-        router.push(`/payment/webview?url=${encodeURIComponent(invoice_url)}&paymentId=${payment_id}&trackId=${trackId}`);
+        const { payment_id } = response.data;
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        router.push(`/payment/moyasar?paymentId=${payment_id}&trackId=${trackId}`);
+      } else {
+        throw new Error(response?.error?.message || 'فشل في إنشاء الدفع');
       }
     } catch (error: any) {
       console.error('Error creating payment:', error);
-      alert(error.message || 'حدث خطأ أثناء إنشاء الدفع');
+      console.error('Error details:', {
+        message: error.message,
+        stack: error.stack,
+      });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      
+      // Show more detailed error message
+      let errorMessage = error.message || 'حدث خطأ أثناء إنشاء الدفع. الرجاء التحقق من الاتصال بالإنترنت والمحاولة مرة أخرى.';
+      
+      // Check if it's an authentication error
+      if (error.message?.includes('401') || error.message?.includes('Unauthorized') || error.message?.includes('انتهت صلاحية')) {
+        errorMessage = 'انتهت صلاحية الجلسة. الرجاء تسجيل الدخول مرة أخرى';
+        router.push('/(auth)/login');
+      }
+      
+      alert(errorMessage);
     } finally {
       setPaymentLoading(false);
     }
-  };
-
-  const handleViewAllPlans = () => {
-    router.back();
   };
 
   if (loading) {
@@ -152,17 +309,18 @@ export default function SubscriptionScreen() {
     <GradientBackground>
       <StatusBar barStyle="light-content" />
       <SafeAreaView style={styles.safeArea}>
-        {/* Header with Badge and Back Button */}
-        <View style={styles.header}>
-          <View style={[styles.badge, { backgroundColor: trackColors.primary }]}>
-            <Text style={styles.badgeText}>SUPER</Text>
-          </View>
+        {/* Header */}
+        <View style={[styles.header, { flexDirection }]}>
           <TouchableOpacity
             style={styles.backButton}
             onPress={() => router.back()}
           >
-            <MaterialIcons name="close" size={28} color="#FFFFFF" />
+            <MaterialIcons name="arrow-back" size={24} color="#FFFFFF" />
           </TouchableOpacity>
+          <View style={[styles.badge, { backgroundColor: trackColors.primary }]}>
+            <Text style={styles.badgeText}>{track?.name.toUpperCase()}</Text>
+          </View>
+          <View style={{ width: 44 }} />
         </View>
 
         <ScrollView
@@ -170,137 +328,257 @@ export default function SubscriptionScreen() {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
+          {/* Hero Section */}
+          <Animated.View
+            style={[
+              styles.heroSection,
+              {
+                opacity: fadeAnim,
+                transform: [{ translateY: slideAnim }],
+              },
+            ]}
+          >
+            <View style={[styles.heroIconContainer, { backgroundColor: `${trackColors.primary}20` }]}>
+              <MaterialIcons name="rocket-launch" size={48} color={trackColors.primary} />
+            </View>
+            <Text style={[styles.heroTitle, { textAlign }]}>
+              {marketingContent.heroTitle}
+            </Text>
+            <Text style={[styles.heroSubtitle, { textAlign }]}>
+              {marketingContent.heroSubtitle}
+              </Text>
+          </Animated.View>
 
-          {/* Title Section */}
-          {subscription?.subscribed ? (
-            <View style={styles.titleSection}>
-              <MaterialIcons name="check-circle" size={60} color={trackColors.primary} />
-              <Text style={styles.title}>
-                لديك اشتراك نشط
+          {/* Stats Section */}
+          <Animated.View
+            style={[
+              styles.statsSection,
+              {
+                opacity: fadeAnim,
+                transform: [{ scale: scaleAnim }],
+              },
+            ]}
+          >
+            <View style={styles.statsGrid}>
+              {marketingContent.stats.map((stat, index) => (
+                <View key={index} style={styles.statCard}>
+                  <View style={[styles.statIconContainer, { backgroundColor: `${trackColors.primary}15` }]}>
+                    <MaterialIcons name={stat.icon as any} size={24} color={trackColors.primary} />
+                  </View>
+                  <Text style={[styles.statValue, { color: trackColors.primary }]}>
+                    {stat.value}
               </Text>
-              <Text style={styles.subtitle}>
-                يمكنك الآن الوصول لجميع محتويات {track?.name}
-              </Text>
-              {subscription.subscription?.end_date && (
-                <Text style={styles.subscriptionExpiry}>
-                  صالح حتى {new Date(subscription.subscription.end_date).toLocaleDateString('ar-SA')}
-                </Text>
-              )}
+                  <Text style={styles.statLabel}>{stat.label}</Text>
+                </View>
+              ))}
             </View>
-          ) : (
-            <View style={styles.titleSection}>
-              <Text style={styles.title}>
-                اختر خطة الاشتراك المناسبة
-              </Text>
-              <Text style={styles.subtitle}>
-                ابدأ رحلتك التعليمية في {track?.name}
-              </Text>
-            </View>
+          </Animated.View>
+
+          {/* Features Section */}
+          {!subscription?.subscribed && (
+            <Animated.View
+              style={[
+                styles.featuresSection,
+                {
+                  opacity: fadeAnim,
+                  transform: [{ translateY: slideAnim }],
+                },
+              ]}
+            >
+              <Text style={[styles.sectionTitle, { textAlign }]}>مميزات الاشتراك</Text>
+              <View style={styles.featuresList}>
+                {marketingContent.features.map((feature, index) => (
+                  <View key={index} style={[styles.featureItem, { flexDirection }]}>
+                    <View style={[styles.featureIcon, { backgroundColor: `${trackColors.primary}20` }]}>
+                      <MaterialIcons name="check-circle" size={20} color={trackColors.primary} />
+                    </View>
+                    <Text style={[styles.featureText, { textAlign }]}>{feature}</Text>
+                  </View>
+                ))}
+              </View>
+            </Animated.View>
           )}
 
           {/* Subscription Plans */}
-          {!subscription?.subscribed && (
-          <View style={styles.tiersContainer}>
-            {plans.map((plan) => {
-              const isPopular = plan.plan_type === 'personal' && plan.duration_days === 30;
-              const isFamily = plan.plan_type === 'family';
+          {!subscription?.subscribed ? (
+            <Animated.View
+              style={[
+                styles.plansSection,
+                {
+                  opacity: fadeAnim,
+                  transform: [{ translateY: slideAnim }],
+                },
+              ]}
+            >
+              <Text style={[styles.sectionTitle, { textAlign }]}>اختر خطتك</Text>
+              <View style={styles.plansContainer}>
+                {plans.map((plan, index) => {
+                  const isMonthly = plan.duration_days === 30;
+                  const isYearly = plan.duration_days === 365;
+                  const isSelected = selectedPlan === plan.id;
               
               return (
+                    <Animated.View
+                      key={plan.id}
+                      style={{
+                        opacity: fadeAnim,
+                        transform: [
+                          {
+                            translateY: slideAnim.interpolate({
+                              inputRange: [0, 50],
+                              outputRange: [0, 50 + index * 20],
+                            }),
+                          },
+                        ],
+                      }}
+                    >
               <TouchableOpacity
-                key={plan.id}
                 style={[
-                  styles.tierCard,
-                  selectedPlan === plan.id && {
+                          styles.planCard,
+                          isSelected && {
                     borderColor: trackColors.primary,
-                    borderWidth: 3,
+                            borderWidth: 2.5,
+                            backgroundColor: trackColors.primary === '#118066' 
+                              ? 'rgba(17, 128, 102, 0.2)' 
+                              : trackColors.primary === '#3B82F6' 
+                              ? 'rgba(59, 130, 246, 0.2)' 
+                              : 'rgba(139, 92, 246, 0.2)',
                   },
                 ]}
-                onPress={() => setSelectedPlan(plan.id)}
-                activeOpacity={0.8}
+                        onPress={() => {
+                          Haptics.selectionAsync();
+                          setSelectedPlan(plan.id);
+                        }}
+                        activeOpacity={0.9}
               >
-                {/* Popular Badge */}
-                {isPopular && (
+                        {isYearly && (
                   <View style={[styles.popularBadge, { backgroundColor: trackColors.primary }]}>
-                    <Text style={styles.popularBadgeText}>الأكثر شعبية</Text>
+                            <MaterialIcons name="star" size={16} color="#FFFFFF" />
+                            <Text style={styles.popularBadgeText}>الأفضل قيمة</Text>
                   </View>
                 )}
 
-                {/* Members Badge */}
-                {isFamily && (
-                  <View style={styles.membersBadge}>
-                    <Text style={styles.membersBadgeText}>2 - 6 أعضاء</Text>
-                  </View>
-                )}
+                        {/* Glow effect for selected card */}
+                        {isSelected && (
+                          <View style={[styles.selectedGlow, { backgroundColor: `${trackColors.primary}20` }]} />
+                        )}
 
-                {/* Plan Name */}
-                <Text style={[styles.tierName, { textAlign: 'right' }]}>
-                  {plan.name}
+                        <View style={styles.planHeader}>
+                          <View style={styles.planNameContainer}>
+                            <Text style={[styles.planName, { textAlign, color: '#FFFFFF' }]}>
+                              {isMonthly ? 'اشتراك شهري' : 'اشتراك سنوي'}
                 </Text>
-
-                {/* Description */}
-                <Text style={styles.tierDescription}>
-                  {plan.description}
-                </Text>
-
-                {/* Price */}
-                <View style={styles.pricesContainer}>
-                  <View style={styles.priceRow}>
-                    <Text style={[styles.price, { color: trackColors.primary }]}>
-                      SAR{Number(plan.price).toFixed(2)}
-                    </Text>
-                    <Text style={styles.priceLabel}>
-                      {plan.duration_days === 30 ? '/ شهر' : 
-                       plan.duration_days === 365 ? '/ سنة' : 
-                       `/ ${plan.duration_days} يوم`}
-                    </Text>
+                            {isYearly && (
+                              <View style={[styles.yearlyBadge, { backgroundColor: trackColors.primary }]}>
+                                <Text style={styles.yearlyBadgeText}>الأفضل</Text>
                   </View>
+                            )}
                 </View>
-
-                {/* Check Icon */}
-                {selectedPlan === plan.id && (
+                          {isSelected && (
                   <View style={[styles.checkIcon, { backgroundColor: trackColors.primary }]}>
                     <MaterialIcons name="check" size={20} color="#FFFFFF" />
+                            </View>
+                          )}
+                        </View>
+
+                        <View style={styles.priceContainer}>
+                          <View style={styles.priceRow}>
+                            <Text style={styles.price}>
+                              {Number(plan.price).toFixed(2)}
+                            </Text>
+                            <Text style={styles.priceCurrency}>ريال</Text>
+                          </View>
+                          <Text style={styles.pricePeriod}>
+                            {isMonthly ? 'شهرياً' : 'سنوياً'}
+                          </Text>
+                        </View>
+
+                        {isYearly && (
+                          <View style={styles.savingsBadge}>
+                            <Text style={styles.savingsText}>
+                              وفر {((Number(plans.find(p => p.duration_days === 30)?.price || 0) * 12 - Number(plan.price)) / (Number(plans.find(p => p.duration_days === 30)?.price || 0) * 12) * 100).toFixed(0)}%
+                            </Text>
                   </View>
                 )}
               </TouchableOpacity>
+                    </Animated.View>
             );
           })}
           </View>
-          )}
-
-          {subscription?.subscribed ? (
-            <>
-              {/* Active Subscription Actions */}
+            </Animated.View>
+          ) : (
+            <Animated.View
+              style={[
+                styles.subscribedSection,
+                {
+                  opacity: fadeAnim,
+                  transform: [{ scale: scaleAnim }],
+                },
+              ]}
+            >
+              <View style={[styles.subscribedCard, { borderColor: trackColors.primary }]}>
+                <MaterialIcons name="check-circle" size={64} color={trackColors.primary} />
+                <Text style={[styles.subscribedTitle, { textAlign }]}>لديك اشتراك نشط</Text>
+                <Text style={[styles.subscribedSubtitle, { textAlign }]}>
+                  يمكنك الآن الوصول لجميع محتويات {track?.name}
+                </Text>
+                {subscription.subscription?.end_date && (
+                  <Text style={styles.subscriptionExpiry}>
+                    صالح حتى {new Date(subscription.subscription.end_date).toLocaleDateString('ar-SA')}
+                  </Text>
+                )}
               <TouchableOpacity
                 style={[styles.startButton, { backgroundColor: trackColors.primary }]}
                 onPress={() => router.push(`/(tabs)/tracks/${trackId}`)}
                 activeOpacity={0.8}
               >
-                <Text style={[styles.startButtonText, { color: '#FFFFFF' }]}>
-                  ابدأ التعلم
-                </Text>
-                <MaterialIcons name="arrow-back" size={24} color="#FFFFFF" />
+                  <Text style={styles.startButtonText}>ابدأ التعلم</Text>
+                  <MaterialIcons name={flexDirection === 'row-reverse' ? "arrow-forward" : "arrow-back"} size={24} color="#FFFFFF" />
               </TouchableOpacity>
+              </View>
+            </Animated.View>
+          )}
 
-              <TouchableOpacity
-                style={styles.viewAllPlansButton}
-                onPress={() => router.back()}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.viewAllPlansText}>العودة</Text>
-              </TouchableOpacity>
-            </>
-          ) : (
-            <>
-              {/* Description */}
-              <Text style={styles.description}>
+          {/* Benefits Section */}
+          {!subscription?.subscribed && (
+            <Animated.View
+              style={[
+                styles.benefitsSection,
+                {
+                  opacity: fadeAnim,
+                  transform: [{ translateY: slideAnim }],
+                },
+              ]}
+            >
+              <Text style={[styles.sectionTitle, { textAlign }]}>لماذا تختارنا؟</Text>
+              <View style={styles.benefitsList}>
+                {marketingContent.benefits.map((benefit, index) => (
+                  <View key={index} style={[styles.benefitItem, { flexDirection }]}>
+                    <MaterialIcons name="auto-awesome" size={24} color={trackColors.primary} />
+                    <Text style={[styles.benefitText, { textAlign }]}>{benefit}</Text>
+                  </View>
+                ))}
+              </View>
+            </Animated.View>
+          )}
+
+          {/* CTA Section */}
+          {!subscription?.subscribed && (
+            <Animated.View
+              style={[
+                styles.ctaSection,
+                {
+                  opacity: fadeAnim,
+                  transform: [{ translateY: slideAnim }],
+                },
+              ]}
+            >
+              <Text style={[styles.ctaText, { textAlign }]}>
                 الدفع آمن ومشفّر. يمكنك الإلغاء في أي وقت.
               </Text>
-
-              {/* Subscribe Button */}
               <TouchableOpacity
                 style={[
-                  styles.startButton, 
+                  styles.subscribeButton,
                   { backgroundColor: '#FFFFFF' },
                   (paymentLoading || !selectedPlan) && styles.buttonDisabled
                 ]}
@@ -312,29 +590,18 @@ export default function SubscriptionScreen() {
                   <ActivityIndicator size="small" color="#1B365D" />
                 ) : (
                   <>
-                    <Text style={[styles.startButtonText, { color: '#1B365D' }]}>
+                    <Text style={[styles.subscribeButtonText, { color: '#1B365D' }]}>
                       اشترك الآن
                     </Text>
-                    <MaterialIcons name="arrow-back" size={24} color="#1B365D" />
+                    <MaterialIcons 
+                      name={flexDirection === 'row-reverse' ? "arrow-forward" : "arrow-back"} 
+                      size={24} 
+                      color="#1B365D" 
+                    />
                   </>
                 )}
               </TouchableOpacity>
-
-              {/* View All Plans Link */}
-              <TouchableOpacity
-                style={styles.viewAllPlansButton}
-                onPress={handleViewAllPlans}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.viewAllPlansText}>عرض كل المسارات</Text>
-              </TouchableOpacity>
-
-              {/* Footer Note */}
-              <Text style={styles.footerNote}>
-                سيتم تفعيل الاشتراك فوراً بعد إتمام الدفع. يمكنك الوصول لجميع المحتويات
-                طوال فترة الاشتراك.
-              </Text>
-            </>
+            </Animated.View>
           )}
         </ScrollView>
       </SafeAreaView>
@@ -345,13 +612,6 @@ export default function SubscriptionScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    padding: 20,
-    paddingBottom: 100,
   },
   loadingContainer: {
     flex: 1,
@@ -378,9 +638,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 8,
     borderRadius: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
   },
   badgeText: {
     color: '#FFFFFF',
@@ -388,187 +645,329 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 1.2,
   },
-  titleSection: {
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    padding: 20,
+    paddingBottom: 100,
+  },
+  heroSection: {
+    alignItems: 'center',
     marginBottom: 32,
+    paddingTop: 20,
   },
-  title: {
-    color: '#FFFFFF',
-    fontSize: 26,
-    fontWeight: '700',
-    textAlign: 'center',
-    marginBottom: 8,
-    lineHeight: 36,
-  },
-  titleHighlight: {
-    flexDirection: 'row',
+  heroIconContainer: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 8,
+    marginBottom: 20,
+  },
+  heroTitle: {
+    color: '#FFFFFF',
+    fontSize: 32,
+    fontWeight: '800',
     marginBottom: 12,
+    lineHeight: 42,
+  },
+  heroSubtitle: {
+    color: 'rgba(255, 255, 255, 0.8)',
+    fontSize: 16,
+    lineHeight: 24,
+  },
+  statsSection: {
+    marginBottom: 32,
+  },
+  statsGrid: {
+    flexDirection: 'row',
     flexWrap: 'wrap',
+    gap: 12,
   },
-  titleText: {
-    color: '#FFFFFF',
-    fontSize: 26,
-    fontWeight: '700',
+  statCard: {
+    flex: 1,
+    minWidth: (width - 60) / 2,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderRadius: 16,
+    padding: 16,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
   },
-  highlightBadge: {
-    paddingHorizontal: 14,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  titleHighlightText: {
-    color: '#FFFFFF',
-    fontSize: 26,
-    fontWeight: '700',
-  },
-  subtitle: {
-    color: 'rgba(255, 255, 255, 0.7)',
-    fontSize: 15,
-    textAlign: 'center',
-    lineHeight: 22,
+  statIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
     marginBottom: 8,
   },
-  subscriptionExpiry: {
-    color: 'rgba(255, 255, 255, 0.8)',
-    fontSize: 14,
-    textAlign: 'center',
-    marginTop: 8,
-  },
-  tiersContainer: {
-    gap: 16,
-    marginBottom: 24,
-  },
-  tierCard: {
-    backgroundColor: 'rgba(255, 255, 255, 0.97)',
-    borderRadius: 20,
-    padding: 20,
-    borderWidth: 2,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    position: 'relative',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  popularBadge: {
-    position: 'absolute',
-    top: 12,
-    left: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
-  },
-  popularBadgeText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  membersBadge: {
-    position: 'absolute',
-    top: 12,
-    left: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
-    backgroundColor: 'rgba(27, 54, 93, 0.1)',
-  },
-  membersBadgeText: {
-    color: '#1B365D',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  tierName: {
-    color: '#1B365D',
+  statValue: {
     fontSize: 24,
     fontWeight: '700',
-    marginBottom: 8,
-    marginTop: 8,
+    marginBottom: 4,
   },
-  tierDescription: {
-    color: '#1B365D',
-    fontSize: 13,
-    marginBottom: 16,
-    textAlign: 'right',
-    opacity: 0.8,
+  statLabel: {
+    color: 'rgba(255, 255, 255, 0.7)',
+    fontSize: 12,
+    textAlign: 'center',
   },
-  pricesContainer: {
-    gap: 8,
-    alignItems: 'flex-end',
+  featuresSection: {
+    marginBottom: 32,
   },
-  priceRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    gap: 6,
-  },
-  price: {
-    fontSize: 28,
+  sectionTitle: {
+    color: '#FFFFFF',
+    fontSize: 24,
     fontWeight: '700',
+    marginBottom: 20,
   },
-  priceLabel: {
-    color: '#1B365D',
-    fontSize: 16,
-    fontWeight: '600',
+  featuresList: {
+    gap: 12,
   },
-  yearlyPrice: {
-    color: '#1B365D',
-    fontSize: 16,
-    fontWeight: '600',
+  featureItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderRadius: 12,
+    padding: 16,
+    gap: 12,
   },
-  checkIcon: {
-    position: 'absolute',
-    top: 20,
-    right: 20,
+  featureIcon: {
     width: 32,
     height: 32,
     borderRadius: 16,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  description: {
+  featureText: {
+    flex: 1,
+    color: '#FFFFFF',
+    fontSize: 15,
+    lineHeight: 22,
+  },
+  plansSection: {
+    marginBottom: 32,
+  },
+  plansContainer: {
+    gap: 16,
+  },
+  planCard: {
+    backgroundColor: 'rgba(18, 38, 57, 0.6)',
+    borderRadius: 24,
+    padding: 24,
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+    position: 'relative',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
+    elevation: 8,
+    overflow: 'hidden',
+  },
+  selectedGlow: {
+    position: 'absolute',
+    top: -2,
+    left: -2,
+    right: -2,
+    bottom: -2,
+    borderRadius: 26,
+    opacity: 0.3,
+    zIndex: -1,
+  },
+  popularBadge: {
+    position: 'absolute',
+    top: 20,
+    right: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 12,
+    gap: 6,
+    zIndex: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  popularBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  planHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+    marginTop: 8,
+  },
+  planNameContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  planName: {
+    color: '#FFFFFF',
+    fontSize: 22,
+    fontWeight: '700',
+  },
+  yearlyBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  yearlyBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  checkIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  priceContainer: {
+    marginTop: 16,
+    marginBottom: 12,
+  },
+  priceRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 6,
+    marginBottom: 4,
+  },
+  price: {
+    fontSize: 42,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  priceCurrency: {
+    color: 'rgba(255, 255, 255, 0.7)',
+    fontSize: 20,
+    fontWeight: '600',
+  },
+  pricePeriod: {
+    color: 'rgba(255, 255, 255, 0.6)',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  savingsBadge: {
+    backgroundColor: 'rgba(99, 205, 47, 0.2)',
+    borderColor: '#63CD2F',
+    borderWidth: 1.5,
+    borderRadius: 10,
+    padding: 10,
+    alignSelf: 'flex-start',
+    marginTop: 8,
+  },
+  savingsText: {
+    color: '#63CD2F',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  benefitsSection: {
+    marginBottom: 32,
+  },
+  benefitsList: {
+    gap: 16,
+  },
+  benefitItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderRadius: 16,
+    padding: 20,
+    gap: 16,
+  },
+  benefitText: {
+    flex: 1,
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+    lineHeight: 24,
+  },
+  ctaSection: {
+    marginBottom: 20,
+  },
+  ctaText: {
     color: 'rgba(255, 255, 255, 0.8)',
     fontSize: 14,
-    textAlign: 'center',
     marginBottom: 24,
+    lineHeight: 20,
   },
-  startButton: {
-    flexDirection: 'row',
-    paddingVertical: 18,
+  subscribeButton: {
+    flexDirection: 'row-reverse',
+    paddingVertical: 20,
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    marginBottom: 16,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 6,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.2,
+    shadowRadius: 16,
+    elevation: 10,
   },
   buttonDisabled: {
     opacity: 0.5,
   },
+  subscribeButtonText: {
+    fontSize: 20,
+    fontWeight: '700',
+  },
+  subscribedSection: {
+    marginBottom: 32,
+  },
+  subscribedCard: {
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 24,
+    padding: 32,
+    alignItems: 'center',
+    borderWidth: 2,
+  },
+  subscribedTitle: {
+    color: '#FFFFFF',
+    fontSize: 24,
+    fontWeight: '700',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  subscribedSubtitle: {
+    color: 'rgba(255, 255, 255, 0.8)',
+    fontSize: 16,
+    marginBottom: 16,
+    lineHeight: 24,
+  },
+  subscriptionExpiry: {
+    color: 'rgba(255, 255, 255, 0.7)',
+    fontSize: 14,
+    marginBottom: 24,
+  },
+  startButton: {
+    flexDirection: 'row-reverse',
+    paddingVertical: 16,
+    paddingHorizontal: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
   startButtonText: {
+    color: '#FFFFFF',
     fontSize: 18,
     fontWeight: '700',
   },
-  viewAllPlansButton: {
-    paddingVertical: 12,
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  viewAllPlansText: {
-    color: 'rgba(255, 255, 255, 0.8)',
-    fontSize: 16,
-    fontWeight: '600',
-    textDecorationLine: 'underline',
-  },
-  footerNote: {
-    color: 'rgba(255, 255, 255, 0.6)',
-    fontSize: 12,
-    textAlign: 'center',
-    lineHeight: 18,
-  },
 });
-

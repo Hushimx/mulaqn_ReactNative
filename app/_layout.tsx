@@ -4,7 +4,7 @@ import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, LogBox } from 'react-native';
 import 'react-native-reanimated';
 
 import { useColorScheme } from '@/hooks/useColorScheme';
@@ -12,6 +12,9 @@ import { LanguageProvider, useLanguage } from '@/contexts/LanguageContext';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { TrackProvider } from '@/contexts/TrackContext';
 import '@/i18n/config';
+
+// إخفاء جميع الـ warnings والأخطاء من الواجهة
+LogBox.ignoreAllLogs(true);
 
 // Keep the splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
@@ -23,6 +26,14 @@ function RootLayoutNav() {
   const { isAuthenticated, isLoading } = useAuth();
   const segments = useSegments();
   const router = useRouter();
+
+  // إخفاء شريط Development في Expo
+  useEffect(() => {
+    if (__DEV__) {
+      // @ts-ignore
+      global.__EXPO_HIDE_DEV_INDICATOR__ = true;
+    }
+  }, []);
 
   useEffect(() => {
     if (isLoading) return; // انتظر حتى ينتهي التحميل
@@ -48,15 +59,16 @@ function RootLayoutNav() {
 
   return (
     <Stack>
+      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="login" options={{ headerShown: false }} />
-      <Stack.Screen name="subscription" options={{ headerShown: false }} />
-      <Stack.Screen name="assessments" options={{ headerShown: false }} />
-      <Stack.Screen name="payment" options={{ headerShown: false }} />
       <Stack.Screen name="register" options={{ headerShown: false }} />
       <Stack.Screen name="register-otp" options={{ headerShown: false }} />
       <Stack.Screen name="register-success" options={{ headerShown: false }} />
       <Stack.Screen name="otp-login" options={{ headerShown: false }} />
-      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      <Stack.Screen name="subscription" options={{ headerShown: false }} />
+      <Stack.Screen name="assessments" options={{ headerShown: false }} />
+      <Stack.Screen name="multiplayer" options={{ headerShown: false }} />
+      <Stack.Screen name="payment" options={{ headerShown: false }} />
       <Stack.Screen name="+not-found" />
     </Stack>
   );
@@ -96,14 +108,7 @@ function AppProviders({ colorScheme }: AppProvidersProps) {
     <AuthProvider>
       <TrackProvider>
         <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-          <View
-            style={[
-              styles.appContainer,
-              {
-                direction: isRTL ? 'rtl' : 'ltr',
-              },
-            ]}
-          >
+          <View style={styles.appContainer}>
             <RootLayoutNav />
           </View>
           <StatusBar style="auto" />
@@ -116,5 +121,7 @@ function AppProviders({ colorScheme }: AppProvidersProps) {
 const styles = StyleSheet.create({
   appContainer: {
     flex: 1,
+    // RTL/LTR is handled globally by I18nManager
+    // All text and layout will automatically respect the current direction
   },
 });
