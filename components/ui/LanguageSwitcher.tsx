@@ -7,11 +7,16 @@ export function LanguageSwitcher() {
   const colorScheme = useColorScheme();
 
   const toggleLanguage = () => {
+    // تبديل المسميات: العربي → إنجليزي في i18n، الإنجليزي → عربي في i18n
     const newLanguage = language === 'ar' ? 'en' : 'ar';
     changeLanguage(newLanguage);
   };
 
   const isDark = colorScheme === 'dark';
+
+  // عرض المسمى المعكوس: عندما language = 'ar' → نعرض "EN" (لأن i18n = 'en')
+  // عندما language = 'en' → نعرض "AR" (لأن i18n = 'ar')
+  const displayText = language === 'ar' ? 'EN' : 'AR';
 
   return (
     <TouchableOpacity
@@ -27,7 +32,7 @@ export function LanguageSwitcher() {
           styles.text,
           isDark ? styles.textDark : styles.textLight
         ]}>
-          {language === 'ar' ? 'EN' : 'AR'}
+          {displayText}
         </Text>
       </View>
     </TouchableOpacity>

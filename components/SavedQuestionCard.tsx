@@ -22,6 +22,8 @@ interface SavedQuestionCardProps {
   hasNote: boolean;
   tags: Tag[];
   createdAt: string;
+  hasImage?: boolean;
+  imageUrl?: string;
   onPress: () => void;
   index: number;
 }
@@ -87,6 +89,8 @@ export const SavedQuestionCard: React.FC<SavedQuestionCardProps> = ({
   hasNote,
   tags,
   createdAt,
+  hasImage = false,
+  imageUrl,
   onPress,
   index,
 }) => {
@@ -139,6 +143,12 @@ export const SavedQuestionCard: React.FC<SavedQuestionCardProps> = ({
               {/* Header */}
               <View style={styles.header}>
                 <View style={styles.headerRight}>
+                  {/* Image indicator */}
+                  {hasImage && (
+                    <View style={styles.imageIndicator}>
+                      <MaterialIcons name="image" size={14} color="#8B5CF6" />
+                    </View>
+                  )}
                   {/* Tags count indicator */}
                   {tags.length > 0 && (
                     <View style={styles.tagsCountBadge}>
@@ -228,6 +238,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+  },
+  imageIndicator: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: 'rgba(139, 92, 246, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   tagsCountBadge: {
     flexDirection: 'row',

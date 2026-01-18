@@ -17,6 +17,8 @@ import { useTranslation } from 'react-i18next';
 import { GradientBackground } from '@/components/ui/GradientBackground';
 import { useAuth } from '@/contexts/AuthContext';
 import { api, API_ENDPOINTS } from '@/utils/api';
+import { resetFirstTime } from '@/utils/firstTimeUser';
+import { clearSelectedTrackId } from '@/utils/trackSelection';
 
 interface Article {
   id: number;
@@ -43,7 +45,7 @@ interface Ticket {
 export default function SupportScreen() {
   const { t } = useTranslation();
   const router = useRouter();
-  const { user, login, isLoading } = useAuth();
+  const { user, login, logout, isLoading } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const [popularArticles, setPopularArticles] = useState<Article[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -433,6 +435,46 @@ export default function SupportScreen() {
                     <Text style={styles.modalSectionTitle}>🔗 روابط سريعة</Text>
                     <TouchableOpacity
                       style={styles.quickLink}
+                      onPress={async () => {
+                        try {
+                        setShowDeveloperTools(false);
+                          await resetFirstTime();
+                          await clearSelectedTrackId();
+                          await logout();
+                          // الانتقال بعد logout مباشرة
+                          setTimeout(() => {
+                            router.replace('/welcome');
+                          }, 200);
+                        } catch (error) {
+                          Alert.alert('❌', 'فشل في إعادة التعيين');
+                        }
+                      }}
+                    >
+                      <MaterialIcons name="refresh" size={20} color="#D4AF37" />
+                      <Text style={styles.quickLinkText}>تسجيل جديد</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.quickLink}
+                      onPress={async () => {
+                        try {
+                        setShowDeveloperTools(false);
+                          await resetFirstTime();
+                          await clearSelectedTrackId();
+                          await logout();
+                          // الانتقال بعد logout مباشرة
+                          setTimeout(() => {
+                            router.replace('/welcome');
+                          }, 200);
+                        } catch (error) {
+                          Alert.alert('❌', 'فشل في إعادة التعيين');
+                        }
+                      }}
+                    >
+                      <MaterialIcons name="person-add" size={20} color="#D4AF37" />
+                      <Text style={styles.quickLinkText}>دخول مستخدم جديد</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.quickLink}
                       onPress={() => {
                         setShowDeveloperTools(false);
                         router.push('/login');
@@ -440,26 +482,6 @@ export default function SupportScreen() {
                     >
                       <MaterialIcons name="login" size={20} color="#D4AF37" />
                       <Text style={styles.quickLinkText}>تسجيل الدخول</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.quickLink}
-                      onPress={() => {
-                        setShowDeveloperTools(false);
-                        router.push('/register');
-                      }}
-                    >
-                      <MaterialIcons name="person-add" size={20} color="#D4AF37" />
-                      <Text style={styles.quickLinkText}>تسجيل حساب جديد</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.quickLink}
-                      onPress={() => {
-                        setShowDeveloperTools(false);
-                        router.push('/welcome');
-                      }}
-                    >
-                      <MaterialIcons name="school" size={20} color="#D4AF37" />
-                      <Text style={styles.quickLinkText}>Onboarding</Text>
                     </TouchableOpacity>
                   </View>
                 </ScrollView>

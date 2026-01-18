@@ -11,6 +11,7 @@ import {
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { GradientBackground } from '@/components/ui/GradientBackground';
+import { AvatarDisplay } from '@/components/profile/AvatarDisplay';
 import { getTrackColors } from '@/contexts/TrackContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { api, API_ENDPOINTS } from '@/utils/api';
@@ -23,6 +24,8 @@ interface Participant {
   user_id: number;
   name: string;
   is_ready: boolean;
+  avatar_shape?: string | null;
+  avatar_color?: string | null;
 }
 
 export default function MultiplayerReadyScreen() {
@@ -430,9 +433,12 @@ export default function MultiplayerReadyScreen() {
             <Text style={styles.participantsTitle}>المشاركون</Text>
             {participants.map((participant) => (
               <View key={participant.user_id} style={styles.participantCard}>
-                <View style={[styles.participantAvatar, { backgroundColor: colors.primary }]}>
-                  <MaterialIcons name="person" size={24} color="#FFFFFF" />
-                </View>
+                <AvatarDisplay
+                  shape={participant.avatar_shape || undefined}
+                  color={participant.avatar_color || undefined}
+                  user={participant.user_id === user?.id ? user : undefined}
+                  size={48}
+                />
                 <View style={styles.participantInfo}>
                   <Text style={styles.participantName}>{participant.name}</Text>
                 </View>

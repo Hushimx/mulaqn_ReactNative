@@ -14,17 +14,24 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { GradientBackground } from '@/components/ui/GradientBackground';
+import { getTrackColors } from '@/contexts/TrackContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { api, API_ENDPOINTS } from '@/utils/api';
 import { SkeletonStatCard, SkeletonTrackCard } from '@/components/ui/SkeletonLoader';
 import SpiritualCard from '@/components/spiritual/SpiritualCard';
+import { AvatarDisplay } from '@/components/profile/AvatarDisplay';
 
 interface Track {
   id: number;
   code: string;
   name: string;
   description?: string;
+  icon?: string;
+  icon_emoji?: string;
+  primary_color?: string;
+  bg_color?: string;
+  gradient_colors?: string[];
   has_subscription?: boolean;
   subscription_status?: string;
 }
@@ -95,13 +102,20 @@ export default function HomeScreen() {
     }
   };
 
-  const getTrackColor = (trackId: number) => {
-    switch (trackId) {
-      case 1: return '#10B981'; // قدرات - أخضر
-      case 2: return '#3B82F6'; // تحصيلي - أزرق
-      case 3: return '#8B5CF6'; // STEP - بنفسجي
-      default: return '#D4AF37';
-    }
+  const getTrackColor = (track: Track) => {
+    const trackColors = getTrackColors(track);
+    return trackColors.primary;
+  };
+
+  const getTrackIcon = (track: Track) => {
+    return track.icon_emoji || track.icon || (() => {
+      switch (track.id) {
+        case 1: return '🧠'; // قدرات
+        case 2: return '📐'; // تحصيلي
+        case 3: return '🌐'; // STEP
+        default: return '📚';
+      }
+    })();
   };
 
   return (
@@ -135,15 +149,15 @@ export default function HomeScreen() {
                   </View>
                 )}
               </TouchableOpacity>
-              <View style={styles.profileImageContainer}>
-                {user?.avatar ? (
-                  <Image source={{ uri: user.avatar }} style={styles.profileImage} />
-                ) : (
-                  <View style={styles.profileImagePlaceholder}>
-                    <Text style={styles.profileEmoji}>👩‍🏫</Text>
-                  </View>
-                )}
-              </View>
+              <TouchableOpacity 
+                style={styles.profileImageContainer}
+                onPress={() => router.push('/(tabs)/profile')}
+                activeOpacity={0.8}
+              >
+                <View style={styles.avatarWrapper}>
+                  <AvatarDisplay user={user || undefined} size={46} />
+                </View>
+              </TouchableOpacity>
             </View>
           </View>
 
@@ -212,7 +226,8 @@ export default function HomeScreen() {
           ) : (
             <View style={styles.tracksContainer}>
               {tracks.map((track) => {
-                const trackColor = getTrackColor(track.id);
+                const trackColor = getTrackColor(track);
+                const trackIcon = getTrackIcon(track);
                 const isLocked = !track.has_subscription;
                 return (
                   <View key={track.id} style={styles.trackCardWrapper}>
@@ -236,7 +251,7 @@ export default function HomeScreen() {
                       )}
 
                       <View style={styles.trackHeader}>
-                        <Text style={styles.trackEmoji}>🤖</Text>
+                        <Text style={styles.trackEmoji}>{trackIcon}</Text>
                         <View style={[styles.trackBadge, { backgroundColor: `${trackColor}20`, borderColor: trackColor }]}>
                           <Text style={[styles.trackBadgeText, { color: trackColor }]}>3 شهور</Text>
                         </View>
@@ -349,21 +364,19 @@ const styles = StyleSheet.create({
     width: 50,
     height: 50,
     borderRadius: 25,
-    overflow: 'hidden',
-  },
-  profileImage: {
-    width: '100%',
-    height: '100%',
-  },
-  profileImagePlaceholder: {
-    width: '100%',
-    height: '100%',
-    backgroundColor: 'rgba(212, 175, 55, 0.2)',
     justifyContent: 'center',
     alignItems: 'center',
+    borderWidth: 2,
+    borderColor: 'rgba(212, 175, 55, 0.4)',
+    backgroundColor: 'rgba(212, 175, 55, 0.1)',
   },
-  profileEmoji: {
-    fontSize: 28,
+  avatarWrapper: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    overflow: 'hidden',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   statsGrid: {
     flexDirection: 'row',

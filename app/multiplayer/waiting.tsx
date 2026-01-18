@@ -14,6 +14,7 @@ import {
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { GradientBackground } from '@/components/ui/GradientBackground';
+import { AvatarDisplay } from '@/components/profile/AvatarDisplay';
 import { getTrackColors } from '@/contexts/TrackContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -28,6 +29,8 @@ interface Participant {
   name: string;
   is_ready: boolean;
   role: string;
+  avatar_shape?: string | null;
+  avatar_color?: string | null;
 }
 
 export default function MultiplayerWaitingScreen() {
@@ -684,10 +687,10 @@ export default function MultiplayerWaitingScreen() {
   return (
     <GradientBackground colors={colors.gradient}>
       <StatusBar barStyle="light-content" />
-      <View style={styles.container}>
-        <Animated.View entering={FadeInDown.duration(600)} style={styles.header}>
+      <View style={[styles.container, { flexDirection: flexDirection === 'row-reverse' ? 'column' : 'column' }]}>
+        <Animated.View entering={FadeInDown.duration(600)} style={[styles.header, { flexDirection }]}>
           <TouchableOpacity
-            style={styles.backButton}
+            style={[styles.backButton, flexDirection === 'row-reverse' && styles.backButtonRTL]}
             onPress={handleLeave}
           >
             <MaterialIcons
@@ -696,16 +699,16 @@ export default function MultiplayerWaitingScreen() {
               color="#FFFFFF"
             />
           </TouchableOpacity>
-          <Text style={styles.title}>في انتظار الصديق</Text>
+          <Text style={[styles.title, { textAlign }]}>في انتظار الصديق</Text>
         </Animated.View>
 
         <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
           {/* Session Code */}
           {code && (
             <Animated.View entering={FadeInUp.duration(600).delay(200)} style={styles.codeContainer}>
-              <Text style={styles.codeLabel}>انسخ الكود وأرسله لصديقك</Text>
+              <Text style={[styles.codeLabel, { textAlign }]}>انسخ الكود وأرسله لصديقك</Text>
               <TouchableOpacity
-                style={[styles.codeBox, { borderColor: colors.primary }]}
+                style={[styles.codeBox, { borderColor: colors.primary, flexDirection }]}
                 onPress={handleCopyCode}
                 activeOpacity={0.8}
               >
@@ -716,25 +719,28 @@ export default function MultiplayerWaitingScreen() {
                 </Animated.Text>
                 <MaterialIcons name="content-copy" size={24} color={colors.primary} />
               </TouchableOpacity>
-              <Text style={styles.codeHint}>ننتظر خويّك يدخل</Text>
+              <Text style={[styles.codeHint, { textAlign }]}>ننتظر خويّك يدخل</Text>
             </Animated.View>
           )}
 
           {/* Participants */}
           <Animated.View entering={FadeInUp.duration(600).delay(400)} style={styles.participantsContainer}>
-            <Text style={styles.participantsTitle}>المشاركون</Text>
+            <Text style={[styles.participantsTitle, { textAlign }]}>المشاركون</Text>
             {participants.map((participant) => (
               <Animated.View 
                 key={participant.user_id} 
-                style={styles.participantCard}
+                style={[styles.participantCard, { flexDirection }]}
                 entering={participant.is_ready ? FadeInUp.duration(400) : undefined}
               >
-                <View style={[styles.participantAvatar, { backgroundColor: colors.primary }]}>
-                  <MaterialIcons name="person" size={24} color="#FFFFFF" />
-                </View>
+                <AvatarDisplay
+                  shape={participant.avatar_shape || undefined}
+                  color={participant.avatar_color || undefined}
+                  user={participant.user_id === user?.id ? user : undefined}
+                  size={48}
+                />
                 <View style={styles.participantInfo}>
-                  <Text style={styles.participantName}>{participant.name}</Text>
-                  <Text style={styles.participantRole}>
+                  <Text style={[styles.participantName, { textAlign }]}>{participant.name}</Text>
+                  <Text style={[styles.participantRole, { textAlign }]}>
                     {participant.role === 'creator' ? 'منشئ الجلسة' : 'منضم'}
                   </Text>
                 </View>
@@ -772,22 +778,22 @@ export default function MultiplayerWaitingScreen() {
               >
                 <MaterialIcons name="check-circle" size={64} color={colors.primary} />
               </Animated.View>
-              <Text style={styles.allReadyTitle}>كلاهما مستعد!</Text>
-              <Text style={styles.allReadySubtitle}>سيبدأ الاختبار قريباً...</Text>
+              <Text style={[styles.allReadyTitle, { textAlign }]}>كلاهما مستعد!</Text>
+              <Text style={[styles.allReadySubtitle, { textAlign }]}>سيبدأ الاختبار قريباً...</Text>
             </Animated.View>
           )}
 
           {/* Ready Button - Show when both participants joined but not all ready */}
           {participants.length === 2 && !allReady && (
             <Animated.View entering={FadeInUp.duration(600).delay(600)} style={styles.readyContainer}>
-              <Text style={styles.readyHint}>
+              <Text style={[styles.readyHint, { textAlign }]}>
                 {participants.some(p => p.is_ready) 
                   ? 'في انتظار المستخدم الآخر...' 
                   : 'اضغط استعد للبدء'}
               </Text>
               {!isReady && (
                 <TouchableOpacity
-                  style={[styles.readyButton, { backgroundColor: colors.primary }]}
+                  style={[styles.readyButton, { backgroundColor: colors.primary, flexDirection }]}
                   onPress={handleReady}
                   activeOpacity={0.8}
                   disabled={loading}
@@ -805,7 +811,7 @@ export default function MultiplayerWaitingScreen() {
           {participants.length < 2 && (
             <Animated.View entering={FadeInUp.duration(600).delay(600)} style={styles.waitingMessage}>
               <ActivityIndicator size="large" color={colors.primary} />
-              <Text style={styles.waitingText}>في انتظار انضمام صديقك...</Text>
+              <Text style={[styles.waitingText, { textAlign }]}>في انتظار انضمام صديقك...</Text>
             </Animated.View>
           )}
         </ScrollView>
@@ -837,6 +843,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 16,
+  },
+  backButtonRTL: {
+    marginRight: 0,
+    marginLeft: 16,
   },
   title: {
     fontSize: 24,
@@ -893,12 +903,12 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   participantCard: {
-    flexDirection: 'row',
     alignItems: 'center',
     padding: 16,
     borderRadius: 12,
     backgroundColor: 'rgba(255, 255, 255, 0.1)',
     marginBottom: 12,
+    gap: 12,
   },
   participantAvatar: {
     width: 48,
@@ -906,10 +916,10 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
   },
   participantInfo: {
     flex: 1,
+    width: '100%',
   },
   participantName: {
     fontSize: 16,

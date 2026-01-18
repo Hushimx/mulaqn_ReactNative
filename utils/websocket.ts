@@ -14,6 +14,7 @@ interface WebSocketCallbacks {
   onSessionUpdated?: (data: any) => void;
   onQuestionRevealed?: (data: any) => void;
   onParticipantReady?: (data: any) => void;
+  onParticipantDisconnected?: (data: any) => void; // ✅ New callback for disconnection
   onConnected?: () => void;
   onDisconnected?: () => void;
   onError?: (error: Error) => void;
@@ -72,9 +73,9 @@ class WebSocketService {
       if (reverbConfig?.host) {
         wsHost = reverbConfig.host;
       } else {
-        // Parse from WEBSOCKET_URL (e.g., ws://192.168.1.36:8080)
+        // Parse from WEBSOCKET_URL (e.g., ws://172.20.10.4:8080)
         const wsUrlMatch = config.WEBSOCKET_URL.match(/^(?:ws|wss):\/\/([^:]+)/);
-        wsHost = wsUrlMatch ? wsUrlMatch[1] : '192.168.1.36';
+        wsHost = wsUrlMatch ? wsUrlMatch[1] : '172.20.10.4'; // IP الماك الحالي
       }
       
       const wsPort = reverbConfig?.port || config.WEBSOCKET_PORT;
@@ -283,6 +284,21 @@ class WebSocketService {
         eventData = data.data?.data || data.data || data;
       }
       this.callbacks.onParticipantReady?.(eventData);
+    } else if (eventName === 'participant.disconnected' || eventName === '.participant.disconnected' || eventName === 'App\\Events\\MultiplayerParticipantDisconnected') {
+      logger.log('[WebSocket] ⚠️ Participant disconnected event received:', data);
+      let eventData: any;
+      if (typeof data.data === 'string') {
+        try {
+          eventData = JSON.parse(data.data);
+          logger.log('[WebSocket] Parsed participant.disconnected data:', eventData);
+        } catch (error) {
+          logger.error('[WebSocket] Error parsing participant.disconnected data:', error);
+          eventData = data.data || data;
+        }
+      } else {
+        eventData = data.data?.data || data.data || data;
+      }
+      this.callbacks.onParticipantDisconnected?.(eventData);
     }
   }
 

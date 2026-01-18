@@ -13,10 +13,17 @@ import {
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
-import { GradientBackground } from '@/components/ui/GradientBackground';
 import { GradientButton } from '@/components/ui/GradientButton';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { api, API_ENDPOINTS } from '@/utils/api';
+import { LinearGradient } from 'expo-linear-gradient';
+
+// Track colors matching lesson page
+const TRACK_COLORS_FALLBACK: Record<number, { primary: string; bg: string; gradient: string[] }> = {
+  1: { primary: '#10B981', bg: '#0A2E1F', gradient: ['#0F1419', '#0A2E1F', '#1B365D'] }, // قدرات - أخضر
+  2: { primary: '#3B82F6', bg: '#0F1B2E', gradient: ['#0F1419', '#0F1B2E', '#1B365D'] }, // تحصيلي - أزرق
+  3: { primary: '#8B5CF6', bg: '#1A1526', gradient: ['#0F1419', '#1A1526', '#1B365D'] }, // STEP - بنفسجي
+};
 
 interface QuestionOption {
   id: number;
@@ -262,20 +269,22 @@ export default function LessonAttemptScreen() {
 
   if (loading) {
     return (
-      <GradientBackground>
+      <LinearGradient colors={trackColor.gradient} style={{ flex: 1 }}>
+        <StatusBar barStyle="light-content" />
         <SafeAreaView style={styles.safeArea}>
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color="#D4AF37" />
             <Text style={styles.loadingText}>{t('common.loading')}</Text>
           </View>
         </SafeAreaView>
-      </GradientBackground>
+      </LinearGradient>
     );
   }
 
   if (error || !attempt || !attempt.questions || attempt.questions.length === 0) {
     return (
-      <GradientBackground>
+      <LinearGradient colors={trackColor.gradient} style={{ flex: 1 }}>
+        <StatusBar barStyle="light-content" />
         <SafeAreaView style={styles.safeArea}>
           <View style={styles.errorContainer}>
             <MaterialIcons name="error-outline" size={64} color="#ef4444" />
@@ -290,7 +299,7 @@ export default function LessonAttemptScreen() {
             </TouchableOpacity>
           </View>
         </SafeAreaView>
-      </GradientBackground>
+      </LinearGradient>
     );
   }
 
@@ -300,7 +309,7 @@ export default function LessonAttemptScreen() {
   const isFirstQuestion = currentQuestionIndex === 0;
 
   return (
-    <GradientBackground>
+    <LinearGradient colors={trackColor.gradient} style={{ flex: 1 }}>
       <StatusBar barStyle="light-content" />
       <SafeAreaView style={styles.safeArea}>
         {/* Header */}
@@ -444,7 +453,7 @@ export default function LessonAttemptScreen() {
           </View>
         </View>
       </SafeAreaView>
-    </GradientBackground>
+    </LinearGradient>
   );
 }
 

@@ -21,6 +21,7 @@ import { LanguageSwitcher } from '@/components/ui/LanguageSwitcher';
 import { FormInput } from '@/components/ui/FormInput';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { getSelectedTrackId, clearSelectedTrackId } from '@/utils/trackSelection';
 
 export default function LoginScreen() {
   const { t } = useTranslation();
@@ -46,8 +47,15 @@ export default function LoginScreen() {
     try {
       setIsLoading(true);
       await login(email.trim(), password);
-      // بعد نجاح تسجيل الدخول، الانتقال للصفحة الرئيسية
+      
+      // التحقق من selectedTrackId والـ redirect للمسار المختار
+      const selectedTrackId = await getSelectedTrackId();
+      if (selectedTrackId) {
+        await clearSelectedTrackId();
+        router.replace(`/(tabs)/tracks/${selectedTrackId}`);
+      } else {
       router.replace('/(tabs)');
+      }
     } catch (error) {
       Alert.alert(
         t('common.error') || 'خطأ',
@@ -160,6 +168,15 @@ export default function LoginScreen() {
               </TouchableOpacity>
             </View>
           </ScrollView>
+
+          {/* Back Button - Fixed at bottom left */}
+          <TouchableOpacity 
+            style={styles.backButton}
+            onPress={() => router.push('/welcome')}
+            activeOpacity={0.8}
+          >
+            <MaterialIcons name="arrow-back" size={24} color="#D4AF37" />
+          </TouchableOpacity>
         </KeyboardAvoidingView>
       </SafeAreaView>
     </GradientBackground>
@@ -281,5 +298,18 @@ const styles = StyleSheet.create({
     color: '#D4AF37',
     fontSize: 14,
     fontWeight: '700',
+  },
+  backButton: {
+    position: 'absolute',
+    bottom: 24,
+    left: 24,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(212, 175, 55, 0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(212, 175, 55, 0.3)',
   },
 });

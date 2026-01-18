@@ -14,6 +14,7 @@ import {
   getDailySpiritualContent,
   getNextSpiritualContent,
 } from '@/utils/spiritualContent';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 interface SpiritualCardProps {
   onContentChange?: (content: SpiritualContent) => void;
@@ -23,6 +24,7 @@ const STORAGE_KEY = 'spiritual_card_state';
 const COUNTER_KEY_PREFIX = 'spiritual_counter_';
 
 export default function SpiritualCard({ onContentChange }: SpiritualCardProps) {
+  const { textAlign, flexDirection } = useLanguage();
   const [currentContent, setCurrentContent] = useState<SpiritualContent>(getDailySpiritualContent());
   const [counter, setCounter] = useState(0);
   const [isCompleted, setIsCompleted] = useState(false);
@@ -147,7 +149,7 @@ export default function SpiritualCard({ onContentChange }: SpiritualCardProps) {
     const newCounter = counter + 1;
     setCounter(newCounter);
 
-    // تأثير بصرية
+    // تأثير بصرية للكارد والنص
     Animated.sequence([
       Animated.timing(scaleAnim, {
         toValue: 1.1,
@@ -218,14 +220,20 @@ export default function SpiritualCard({ onContentChange }: SpiritualCardProps) {
     <View style={styles.container}>
       <Animated.View
         style={[
-          styles.card,
           {
-            borderColor: colors.primary + '40',
-            backgroundColor: 'rgba(18, 38, 57, 0.6)',
             transform: [{ scale: scaleAnim }],
           },
         ]}
       >
+        <View
+          style={[
+            styles.card,
+            {
+              borderColor: colors.primary + '40',
+              backgroundColor: 'rgba(18, 38, 57, 0.6)',
+            },
+          ]}
+        >
         {/* Glow Effect */}
         {isCompleted && (
           <Animated.View
@@ -240,7 +248,7 @@ export default function SpiritualCard({ onContentChange }: SpiritualCardProps) {
         )}
 
         {/* Header */}
-        <View style={styles.header}>
+        <View style={[styles.header, { flexDirection }]}>
           <View style={[styles.iconContainer, { backgroundColor: colors.secondary }]}>
             {currentContent.type === 'tasbeeh' && <Text style={styles.iconEmoji}>✨</Text>}
             {currentContent.type === 'istighfar' && <Text style={styles.iconEmoji}>❤️</Text>}
@@ -254,16 +262,16 @@ export default function SpiritualCard({ onContentChange }: SpiritualCardProps) {
         </View>
 
         {/* Title */}
-        <Text style={[styles.title, { color: colors.primary }]}>{currentContent.title}</Text>
+        <Text style={[styles.title, { color: colors.primary, textAlign }]}>{currentContent.title}</Text>
 
         {/* Content */}
         {currentContent.isInteractive ? (
           <View style={styles.interactiveContent}>
-            <Text style={styles.contentText}>{currentContent.content}</Text>
+            <Text style={[styles.contentText, { textAlign }]}>{currentContent.content}</Text>
             
             {/* Counter */}
             <View style={styles.counterContainer}>
-              <Text style={styles.counterText}>
+              <Text style={[styles.counterText, { textAlign }]}>
                 {counter} / {currentContent.targetCount}
               </Text>
               {progress > 0 && (
@@ -288,12 +296,12 @@ export default function SpiritualCard({ onContentChange }: SpiritualCardProps) {
                 onPress={handleIncrement}
                 activeOpacity={0.8}
               >
-                <Text style={styles.actionButtonText}>
+                <Text style={[styles.actionButtonText, { textAlign }]}>
                   {currentContent.type === 'tasbeeh' ? 'سبحان الله وبحمده' : 'أستغفر الله وأتوب إليه'}
                 </Text>
               </TouchableOpacity>
             ) : (
-              <View style={[styles.completedBadge, { backgroundColor: colors.primary + '20', borderColor: colors.primary }]}>
+              <View style={[styles.completedBadge, { backgroundColor: colors.primary + '20', borderColor: colors.primary, flexDirection }]}>
                 <MaterialIcons name="check-circle" size={20} color={colors.primary} />
                 <Text style={[styles.completedText, { color: colors.primary }]}>تم بنجاح! 🎉</Text>
               </View>
@@ -302,25 +310,25 @@ export default function SpiritualCard({ onContentChange }: SpiritualCardProps) {
         ) : (
           <View style={styles.staticContent}>
             {currentContent.duaText ? (
-              <Text style={styles.duaText}>{currentContent.duaText}</Text>
+              <Text style={[styles.duaText, { textAlign }]}>{currentContent.duaText}</Text>
             ) : (
-              <Text style={styles.contentText}>{currentContent.content}</Text>
+              <Text style={[styles.contentText, { textAlign }]}>{currentContent.content}</Text>
             )}
           </View>
         )}
 
         {/* Benefit */}
         {currentContent.benefit && (
-          <View style={styles.benefitContainer}>
+          <View style={[styles.benefitContainer, { flexDirection }]}>
             <MaterialIcons name="info-outline" size={16} color="rgba(255, 255, 255, 0.6)" />
-            <Text style={styles.benefitText}>{currentContent.benefit}</Text>
+            <Text style={[styles.benefitText, { textAlign }]}>{currentContent.benefit}</Text>
           </View>
         )}
 
         {/* Additional Info for Witr Prayer */}
         {currentContent.type === 'witr_prayer' && (
           <View style={styles.additionalInfo}>
-            <Text style={styles.additionalInfoText}>
+            <Text style={[styles.additionalInfoText, { textAlign }]}>
               <Text style={styles.boldText}>الوقت:</Text> بعد صلاة العشاء حتى طلوع الفجر{'\n'}
               <Text style={styles.boldText}>الأقل:</Text> ركعة واحدة{'\n'}
               <Text style={styles.boldText}>الأفضل:</Text> إحدى عشرة ركعة
@@ -330,17 +338,13 @@ export default function SpiritualCard({ onContentChange }: SpiritualCardProps) {
 
         {/* Source */}
         <View style={styles.sourceContainer}>
-          <Text style={styles.sourceText}>
+          <Text style={[styles.sourceText, { textAlign }]}>
             مصدر: {currentContent.source}
             {currentContent.sourceNumber && ` ${currentContent.sourceNumber}`}
           </Text>
         </View>
+        </View>
       </Animated.View>
-      
-      {/* Hint Text */}
-      <View style={styles.hintContainer}>
-        <Text style={styles.hintText}>اضغط على السهم للتبديل</Text>
-      </View>
     </View>
   );
 }
@@ -365,7 +369,6 @@ const styles = StyleSheet.create({
     borderRadius: 100,
   },
   header: {
-    flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 16,
@@ -387,7 +390,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
     marginBottom: 12,
-    textAlign: 'right',
   },
   interactiveContent: {
     alignItems: 'center',
@@ -399,14 +401,12 @@ const styles = StyleSheet.create({
   contentText: {
     fontSize: 15,
     color: '#FFFFFF',
-    textAlign: 'center',
     lineHeight: 24,
     marginBottom: 12,
   },
   duaText: {
     fontSize: 17,
     color: '#D4AF37',
-    textAlign: 'center',
     lineHeight: 28,
     fontWeight: '600',
     marginBottom: 12,
@@ -442,10 +442,8 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '700',
-    textAlign: 'center',
   },
   completedBadge: {
-    flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     paddingVertical: 12,
@@ -458,7 +456,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   benefitContainer: {
-    flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 8,
     marginTop: 12,
@@ -471,7 +468,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: 'rgba(255, 255, 255, 0.8)',
     lineHeight: 18,
-    textAlign: 'right',
   },
   sourceContainer: {
     marginTop: 12,
@@ -480,17 +476,6 @@ const styles = StyleSheet.create({
   sourceText: {
     fontSize: 11,
     color: '#64748B',
-    textAlign: 'right',
-  },
-  hintContainer: {
-    marginTop: 8,
-    alignItems: 'center',
-  },
-  hintText: {
-    fontSize: 11,
-    color: 'rgba(255, 255, 255, 0.4)',
-    textAlign: 'center',
-    fontStyle: 'italic',
   },
   additionalInfo: {
     marginTop: 12,
@@ -504,7 +489,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: 'rgba(255, 255, 255, 0.8)',
     lineHeight: 22,
-    textAlign: 'right',
   },
   boldText: {
     fontWeight: '700',

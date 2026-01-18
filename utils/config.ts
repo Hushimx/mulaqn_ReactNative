@@ -28,12 +28,12 @@ const buildApiBaseUrl = (): string => {
   
   // للـ iOS Simulator: localhost يعمل
   if (Platform.OS === 'ios') {
-    return 'http://192.168.1.36:8000/api'; // IP الماك
+    return 'http://172.20.10.4:8000/api'; // IP الماك الحالي
   }
   
   // للـ Android Emulator: 10.0.2.2 يعمل
   // للـ Android الجهاز الحقيقي: استخدم IP الماك
-  return 'http://192.168.1.36:8000/api'; // IP الماك
+  return 'http://172.20.10.4:8000/api'; // IP الماك الحالي
 };
 
 // Build WebSocket URL
@@ -52,10 +52,10 @@ const buildWebSocketUrl = (): string => {
   
   // للـ development، استخدم نفس IP الـ API
   if (Platform.OS === 'ios') {
-    return `ws://192.168.1.36:${wsPort}`;
+    return `ws://172.20.10.4:${wsPort}`;
   }
   
-  return `ws://192.168.1.36:${wsPort}`;
+  return `ws://172.20.10.4:${wsPort}`;
 };
 
 export const config = {

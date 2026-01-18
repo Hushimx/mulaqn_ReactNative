@@ -14,6 +14,8 @@ class ApiService {
   private baseURL: string;
   private cache: Map<string, { data: any; timestamp: number }> = new Map();
   private readonly CACHE_TTL = 5 * 60 * 1000; // 5 دقائق
+  // Request deduplication: لتجنب استدعاءات API متعددة لنفس الـ endpoint في نفس الوقت
+  private pendingRequests: Map<string, Promise<any>> = new Map();
   
   // Whitelist للـ endpoints القابلة للـ caching
   private readonly cacheableEndpoints: string[] = [
@@ -26,9 +28,25 @@ class ApiService {
   }
 
   /**
+   * الحصول على TTL للـ endpoint (بالمللي ثانية)
+   */
+  private getCacheTTL(endpoint: string): number {
+    // TTL أقصر لـ subscription check (30 ثانية)
+    if (/^\/me\/subscriptions\/track\/\d+$/.test(endpoint)) {
+      return 30 * 1000; // 30 ثانية
+    }
+    return this.CACHE_TTL; // 5 دقائق للباقي
+  }
+
+  /**
    * التحقق من أن endpoint قابل للـ caching
    */
   private isCacheable(endpoint: string): boolean {
+    // استثناء خاص لـ subscription check (قابل للـ caching مع TTL قصير)
+    if (/^\/me\/subscriptions\/track\/\d+$/.test(endpoint)) {
+      return true;
+    }
+    
     // لا تكاش أي endpoint يحتوي على:
     // - progress, user_progress, attempts
     // - multiplayer
@@ -54,14 +72,29 @@ class ApiService {
       return true;
     }
     
-    // /tracks/{id} - تفاصيل مسار واحد
+    // /tracks/{id} - تفاصيل مسار واحد (بدون /lessons)
     if (/^\/tracks\/\d+$/.test(endpoint)) {
       return true;
     }
     
-    // /tracks/{trackId}/lessons - قائمة الدروس (بدون progress)
-    // لكن يجب التأكد أن الـ response لا يحتوي على user_progress
+    // /tracks/{id}/lessons - قائمة الدروس (غير قابل للـ caching لأنها تحتوي على بيانات المستخدم)
     if (/^\/tracks\/\d+\/lessons$/.test(endpoint)) {
+      return false;
+    }
+    
+    
+    // /smart-schedule/summary - جدول ذكي (GET فقط)
+    if (/^\/smart-schedule\/summary/.test(endpoint)) {
+      return true;
+    }
+    
+    // /smart-schedule/week - خطة الأسبوع (GET فقط)
+    if (/^\/smart-schedule\/week/.test(endpoint)) {
+      return true;
+    }
+    
+    // /schedule-items/{id} - قراءة schedule item (GET فقط)
+    if (/^\/schedule-items\/\d+$/.test(endpoint)) {
       return true;
     }
     
@@ -74,7 +107,8 @@ class ApiService {
   private cleanExpiredCache(): void {
     const now = Date.now();
     for (const [key, value] of this.cache.entries()) {
-      if (now - value.timestamp > this.CACHE_TTL) {
+      const ttl = this.getCacheTTL(key);
+      if (now - value.timestamp > ttl) {
         this.cache.delete(key);
       }
     }
@@ -86,7 +120,8 @@ class ApiService {
   private getCachedData<T>(endpoint: string): T | null {
     this.cleanExpiredCache();
     const cached = this.cache.get(endpoint);
-    if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
+    const ttl = this.getCacheTTL(endpoint);
+    if (cached && Date.now() - cached.timestamp < ttl) {
       logger.log(`[Cache] Hit for ${endpoint}`);
       return cached.data as T;
     }
@@ -219,12 +254,16 @@ class ApiService {
             if (data.error?.fields && Object.keys(data.error.fields).length > 0) {
               const firstError = Object.values(data.error.fields)[0];
               const errorMessage = Array.isArray(firstError) ? firstError[0] : firstError;
-              throw new Error(errorMessage || data.error?.message || 'حدث خطأ في التحقق من البيانات');
+              const error = new Error(errorMessage || data.error?.message || 'حدث خطأ في التحقق من البيانات');
+              (error as any).isUserError = true; // تمييز كخطأ متوقع من المستخدم
+              throw error;
             }
             
             // Handle different error formats
             const errorMessage = data.error?.message || data.message || 'البريد الإلكتروني أو كلمة المرور غير صحيحة';
-            throw new Error(errorMessage);
+            const error = new Error(errorMessage);
+            (error as any).isUserError = true; // تمييز كخطأ متوقع من المستخدم
+            throw error;
           }
           
           // للـ endpoints المحمية، 401 يعني "انتهت صلاحية الجلسة"
@@ -269,8 +308,8 @@ class ApiService {
       );
       
       if (isUserError) {
-        // خطأ متوقع من المستخدم (مثل كود دعوة خاطئ) - سجله كـ warning أو log
-        logger.warn('[API] User error (expected):', error instanceof Error ? error.message : error);
+        // خطأ متوقع من المستخدم (مثل بيانات تسجيل دخول خاطئة) - سجله كـ log عادي
+        logger.log('[API] User error (expected):', error instanceof Error ? error.message : error);
       } else if (isNetworkError) {
         // خطأ في الشبكة - سجله كـ error
         logger.error('[API] Network error:', error);
@@ -304,14 +343,32 @@ class ApiService {
       }
     }
     
-    const data = await this.request<T>(endpoint, { method: 'GET' }, options?.silent401);
-    
-    // حفظ في cache إذا كان endpoint قابل للـ caching
-    if (shouldUseCache) {
-      this.setCachedData(endpoint, data);
+    // Request deduplication: إذا كان هناك request جاري لنفس الـ endpoint، ارجع نفس الـ promise
+    if (this.pendingRequests.has(endpoint)) {
+      return this.pendingRequests.get(endpoint)!;
     }
     
-    return data;
+    // إنشاء request جديد
+    const requestPromise = this.request<T>(endpoint, { method: 'GET' }, options?.silent401)
+      .then(data => {
+        // حفظ في cache إذا كان endpoint قابل للـ caching
+        if (shouldUseCache) {
+          this.setCachedData(endpoint, data);
+        }
+        // إزالة من pending requests
+        this.pendingRequests.delete(endpoint);
+        return data;
+      })
+      .catch(error => {
+        // إزالة من pending requests حتى في حالة الخطأ
+        this.pendingRequests.delete(endpoint);
+        throw error;
+      });
+    
+    // حفظ الـ promise في pending requests
+    this.pendingRequests.set(endpoint, requestPromise);
+    
+    return requestPromise;
   }
 
   /**
@@ -365,6 +422,28 @@ export const getApiBaseUrl = () => API_BASE_URL;
 
 // Export API endpoints
 export const API_ENDPOINTS = {
+  // Smart Schedule
+  SMART_SCHEDULE_SUMMARY: '/smart-schedule/summary',
+  SMART_SCHEDULE_DAY: '/smart-schedule/day',
+  SMART_SCHEDULE_WEEK: '/smart-schedule/week',
+  SMART_SCHEDULE_SET_EXAM_DATE: '/smart-schedule/set-exam-date',
+  SMART_SCHEDULE_UPDATE_EXAM_DATE: '/smart-schedule/update-exam-date',
+  SMART_SCHEDULE_PREVIEW: '/smart-schedule/preview',
+  SMART_SCHEDULE_CREATE_AUTO: '/smart-schedule/create-auto',
+  SMART_SCHEDULE_CREATE_SHORT: '/smart-schedule/create-short',
+  SMART_SCHEDULE_CREATE_CUSTOM: '/smart-schedule/create-custom',
+  
+  // Schedule Items
+  SCHEDULE_ITEM_GET: (id: number) => `/schedule-items/${id}`,
+  SCHEDULE_ITEM_SKIP: (id: number) => `/schedule-items/${id}/skip`,
+  SCHEDULE_ITEM_COMPLETE: (id: number) => `/schedule-items/${id}/complete`,
+  SCHEDULE_ITEM_VERIFY: (id: number) => `/schedule-items/${id}/verify`,
+  
+  // AI Schedule Commands
+  AI_SCHEDULE_COMMAND: '/ai/schedule-command',
+  AI_SCHEDULE_COMMAND_CONFIRM: (id: number) => `/ai/schedule-command/${id}/confirm`,
+  
+  // Existing endpoints
   // Auth
   REGISTER: '/register',
   LOGIN: '/login',
@@ -399,6 +478,7 @@ export const API_ENDPOINTS = {
   
   // Profile
   PROFILE: '/me/profile',
+  PROFILE_UPDATE: '/me/profile',
   PAYMENTS: '/me/payments',
   
   // Tags
@@ -417,6 +497,7 @@ export const API_ENDPOINTS = {
   ASSESSMENTS: (trackId: string | number) => `/tracks/${trackId}/assessments`,
   ASSESSMENT: (id: string | number) => `/assessments/${id}`,
   ASSESSMENT_START: '/assessments/start',
+  RECENT_ATTEMPTS: (trackId: string | number) => `/tracks/${trackId}/recent-attempts`,
   ASSESSMENT_ACTIVE: '/assessments/active/current',
   ASSESSMENT_SAVE_RESPONSE: (attemptId: string | number) => `/assessment-attempts/${attemptId}/responses`,
   ASSESSMENT_SUBMIT: (attemptId: string | number) => `/assessment-attempts/${attemptId}/submit`,
@@ -450,6 +531,7 @@ export const API_ENDPOINTS = {
   MULTIPLAYER_READY: (sessionId: string | number) => `/multiplayer/sessions/${sessionId}/ready`,
   MULTIPLAYER_ANSWER: (sessionId: string | number) => `/multiplayer/sessions/${sessionId}/answer`,
   MULTIPLAYER_REVEAL: (sessionId: string | number) => `/multiplayer/sessions/${sessionId}/reveal`,
+  MULTIPLAYER_ACTIVITY: (sessionId: string | number) => `/multiplayer/sessions/${sessionId}/activity`,
   MULTIPLAYER_NEXT: (sessionId: string | number) => `/multiplayer/sessions/${sessionId}/next`,
   MULTIPLAYER_RESULTS: (sessionId: string | number) => `/multiplayer/sessions/${sessionId}/results`,
   MULTIPLAYER_LEAVE: (sessionId: string | number) => `/multiplayer/sessions/${sessionId}/leave`,

@@ -25,11 +25,70 @@ import { api, API_ENDPOINTS, getApiBaseUrl } from '@/utils/api';
 import { logger } from '@/utils/logger';
 import { MarkdownText } from '@/components/chat/MarkdownText';
 import * as Haptics from 'expo-haptics';
+import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withTiming, withSequence, withDelay } from 'react-native-reanimated';
+import { AvatarDisplay } from '@/components/profile/AvatarDisplay';
+
+// Thinking Indicator Component
+const ThinkingIndicator = ({ color }: { color: string }) => {
+  const dot1Opacity = useSharedValue(0.3);
+  const dot2Opacity = useSharedValue(0.3);
+  const dot3Opacity = useSharedValue(0.3);
+
+  useEffect(() => {
+    // Animate dots in sequence
+    dot1Opacity.value = withRepeat(
+      withSequence(
+        withDelay(0, withTiming(0.8, { duration: 600 })),
+        withTiming(0.3, { duration: 600 })
+      ),
+      -1,
+      false
+    );
+    dot2Opacity.value = withRepeat(
+      withSequence(
+        withDelay(200, withTiming(0.8, { duration: 600 })),
+        withTiming(0.3, { duration: 600 })
+      ),
+      -1,
+      false
+    );
+    dot3Opacity.value = withRepeat(
+      withSequence(
+        withDelay(400, withTiming(0.8, { duration: 600 })),
+        withTiming(0.3, { duration: 600 })
+      ),
+      -1,
+      false
+    );
+  }, []);
+
+  const dot1Style = useAnimatedStyle(() => ({
+    opacity: dot1Opacity.value,
+  }));
+  const dot2Style = useAnimatedStyle(() => ({
+    opacity: dot2Opacity.value,
+  }));
+  const dot3Style = useAnimatedStyle(() => ({
+    opacity: dot3Opacity.value,
+  }));
+
+  return (
+    <View style={styles.thinkingContainer}>
+      <View style={styles.thinkingDots}>
+        <Animated.View style={[styles.thinkingDot, { backgroundColor: `${color}80` }, dot1Style]} />
+        <Animated.View style={[styles.thinkingDot, { backgroundColor: `${color}80` }, dot2Style]} />
+        <Animated.View style={[styles.thinkingDot, { backgroundColor: `${color}80` }, dot3Style]} />
+      </View>
+      <Text style={styles.thinkingText}>جاري التفكير...</Text>
+    </View>
+  );
+};
 
 interface Message {
   role: 'user' | 'assistant';
   content: string;
   timestamp: Date;
+  isStreaming?: boolean; // Flag to indicate if message is still streaming
   interactiveQuestion?: {
     questionId: string;
     question: string;
@@ -189,6 +248,7 @@ export default function AIChatScreen() {
       role: 'assistant',
       content: '',
       timestamp: new Date(),
+      isStreaming: true, // Mark as streaming
     };
 
     setMessages(prev => [...prev, aiMessage]);
@@ -199,156 +259,29 @@ export default function AIChatScreen() {
         throw new Error('غير مصرح لك');
       }
 
-      // Use EventSource polyfill with fetch for POST streaming
-      // Since EventSource doesn't support POST, we'll use fetch with expo's fetch which supports streaming
+      // Use XMLHttpRequest for streaming in React Native (more reliable than fetch)
+      // React Native's fetch doesn't always support ReadableStream properly
       let accumulatedContent = '';
       let finalData: any = null;
-      let buffer = '';
-
-      // Use expo's fetch which supports streaming via the polyfill
-      const response = await fetch(`${getApiBaseUrl()}${API_ENDPOINTS.AI_CHAT_STREAM(trackId)}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-          'Accept': 'text/event-stream',
-        },
-        body: JSON.stringify({
-          message: userMessage.content,
-          history: history,
-        }),
-      });
-
-      if (!response.ok) {
-        let errorText = '';
-        try {
-          errorText = await response.text();
-        } catch (e) {
-          errorText = 'Unable to read error response';
-        }
-        
-        if (__DEV__) {
-          logger.error('Streaming error:', {
-            status: response.status,
-            statusText: response.statusText,
-            errorText: errorText.substring(0, 200),
-          });
-        }
-        
-        // Try to parse error response
-        let errorMessage = `حدث خطأ أثناء إرسال الرسالة (${response.status})`;
-        try {
-          const errorData = JSON.parse(errorText);
-          // Handle different error response formats
-          if (errorData.error) {
-            if (typeof errorData.error === 'string') {
-              errorMessage = errorData.error;
-            } else if (errorData.error.message) {
-              errorMessage = errorData.error.message;
-            }
-          } else if (errorData.message) {
-            errorMessage = errorData.message;
-          } else if (errorData.data?.error?.message) {
-            errorMessage = errorData.data.error.message;
-          }
-        } catch (e) {
-          // Use default message
-        }
-        
-        throw new Error(errorMessage);
-      }
-
-      // Use expo's fetch streaming support (via polyfill)
-      // The polyfill enables streaming support in expo's fetch
-      if (response.body && typeof response.body.getReader === 'function') {
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          const chunk = decoder.decode(value, { stream: true });
-          buffer += chunk;
-
-          // Process complete lines
-          const lines = buffer.split('\n');
-          buffer = lines.pop() || ''; // Keep incomplete line in buffer
-
-          for (const line of lines) {
-            const trimmedLine = line.trim();
-            if (!trimmedLine || !trimmedLine.startsWith('data: ')) {
-              continue;
-            }
-
-            const jsonStr = trimmedLine.substring(6); // Remove 'data: '
-            if (!jsonStr || jsonStr === '[DONE]') continue;
-
-            try {
-              const data = JSON.parse(jsonStr);
-
-              if (data.type === 'content' && data.data) {
-                accumulatedContent += data.data;
-                // Update message content in real-time
-                setMessages(prev => {
-                  const updated = [...prev];
-                  const lastIndex = updated.length - 1;
-                  if (updated[lastIndex]?.role === 'assistant') {
-                    updated[lastIndex] = {
-                      ...updated[lastIndex],
-                      content: accumulatedContent,
-                    };
-                  }
-                  return updated;
-                });
-                scrollToBottom();
-              } else if (data.type === 'done') {
-                finalData = data;
-              } else if (data.type === 'error') {
-                throw new Error(data.message || 'حدث خطأ');
-              }
-            } catch (parseError) {
-              if (__DEV__) {
-                logger.log('Parse error:', parseError, 'Line:', trimmedLine.substring(0, 50));
-              }
-              continue;
-            }
-          }
-        }
-
-        // Process remaining buffer
-        if (buffer.trim()) {
-          const trimmedLine = buffer.trim();
-          if (trimmedLine.startsWith('data: ')) {
-            const jsonStr = trimmedLine.substring(6);
-            if (jsonStr && jsonStr !== '[DONE]') {
-              try {
-                const data = JSON.parse(jsonStr);
-                if (data.type === 'done' && !finalData) {
-                  finalData = data;
-                }
-              } catch (e) {
-                // Skip
-              }
-            }
-          }
-        }
-      } else {
-        // Fallback: use XMLHttpRequest with improved polling and onprogress
-        if (__DEV__) {
-          logger.log('ReadableStream not available, using XMLHttpRequest fallback');
-        }
-        
-        await new Promise<void>((resolve, reject) => {
+      
+      await new Promise<void>((resolve, reject) => {
           const xhr = new XMLHttpRequest();
           let lastPosition = 0;
           let processedLines = new Set<string>();
           let buffer = '';
+          let streamCompleted = false;
 
-          xhr.open('POST', `${getApiBaseUrl()}${API_ENDPOINTS.AI_CHAT_STREAM(trackId)}`, true);
+          const url = `${getApiBaseUrl()}${API_ENDPOINTS.AI_CHAT_STREAM(trackId)}`;
+          if (__DEV__) {
+            logger.log('AI Chat Stream URL:', url);
+            logger.log('Token:', token ? `${token.substring(0, 20)}...` : 'No token');
+          }
+          
+          xhr.open('POST', url, true);
           xhr.setRequestHeader('Content-Type', 'application/json');
           xhr.setRequestHeader('Authorization', `Bearer ${token}`);
           xhr.setRequestHeader('Accept', 'text/event-stream');
+          xhr.responseType = 'text'; // Important for streaming
 
           // Use onprogress for real-time updates
           xhr.onprogress = () => {
@@ -391,6 +324,7 @@ export default function AIChatScreen() {
                           updated[lastIndex] = {
                             ...updated[lastIndex],
                             content: accumulatedContent,
+                            isStreaming: true, // Still streaming
                           };
                         }
                         return updated;
@@ -398,6 +332,18 @@ export default function AIChatScreen() {
                       scrollToBottom();
                     } else if (data.type === 'done') {
                       finalData = data;
+                      // Mark streaming as complete
+                      setMessages(prev => {
+                        const updated = [...prev];
+                        const lastIndex = updated.length - 1;
+                        if (updated[lastIndex]?.role === 'assistant') {
+                          updated[lastIndex] = {
+                            ...updated[lastIndex],
+                            isStreaming: false, // End of stream
+                          };
+                        }
+                        return updated;
+                      });
                     } else if (data.type === 'error') {
                       throw new Error(data.message || 'حدث خطأ');
                     }
@@ -451,6 +397,7 @@ export default function AIChatScreen() {
                           updated[lastIndex] = {
                             ...updated[lastIndex],
                             content: accumulatedContent,
+                            isStreaming: true, // Still streaming
                           };
                         }
                         return updated;
@@ -459,6 +406,18 @@ export default function AIChatScreen() {
                     } else if (data.type === 'done') {
                       finalData = data;
                       clearInterval(pollInterval);
+                      // Mark streaming as complete
+                      setMessages(prev => {
+                        const updated = [...prev];
+                        const lastIndex = updated.length - 1;
+                        if (updated[lastIndex]?.role === 'assistant') {
+                          updated[lastIndex] = {
+                            ...updated[lastIndex],
+                            isStreaming: false, // End of stream
+                          };
+                        }
+                        return updated;
+                      });
                     }
                   } catch (e) {
                     // Skip
@@ -470,6 +429,24 @@ export default function AIChatScreen() {
 
           xhr.onload = () => {
             clearInterval(pollInterval);
+            streamCompleted = true;
+            
+            if (__DEV__) {
+              logger.log('XHR onload - Status:', xhr.status);
+              logger.log('XHR onload - Response length:', xhr.responseText?.length || 0);
+              if (xhr.responseText && xhr.responseText.length > 0) {
+                const preview = xhr.responseText.substring(0, 200);
+                logger.log('XHR onload - Response preview:', preview);
+                // Check if we're receiving HTML instead of stream
+                if (xhr.responseText.trim().startsWith('<!DOCTYPE') || xhr.responseText.trim().startsWith('<html')) {
+                  logger.error('Received HTML instead of stream! This indicates a routing or authentication issue.');
+                  logger.error('Full response start:', xhr.responseText.substring(0, 500));
+                  reject(new Error('الخادم يرجع صفحة HTML بدلاً من البيانات. تحقق من الـ URL والـ authentication.'));
+                  return;
+                }
+              }
+            }
+            
             if (xhr.status >= 200 && xhr.status < 300) {
               // Process any remaining data
               if (buffer.trim()) {
@@ -481,6 +458,9 @@ export default function AIChatScreen() {
                       const data = JSON.parse(jsonStr);
                       if (data.type === 'done' && !finalData) {
                         finalData = data;
+                      } else if (data.type === 'error') {
+                        reject(new Error(data.message || 'حدث خطأ'));
+                        return;
                       }
                     } catch (e) {
                       // Skip
@@ -500,35 +480,91 @@ export default function AIChatScreen() {
                 if (processedLines.has(trimmedLine)) continue;
 
                 const jsonStr = trimmedLine.substring(6);
-                if (!jsonStr) continue;
+                if (!jsonStr || jsonStr === '[DONE]') continue;
 
                 try {
                   const data = JSON.parse(jsonStr);
                   if (data.type === 'done' && !finalData) {
                     finalData = data;
+                  } else if (data.type === 'error') {
+                    reject(new Error(data.message || 'حدث خطأ'));
+                    return;
                   }
                 } catch (e) {
                   // Skip
                 }
               }
+              
+              // Mark streaming as complete
+              setMessages(prev => {
+                const updated = [...prev];
+                const lastIndex = updated.length - 1;
+                if (updated[lastIndex]?.role === 'assistant') {
+                  updated[lastIndex] = {
+                    ...updated[lastIndex],
+                    isStreaming: false, // End of stream
+                  };
+                }
+                return updated;
+              });
+              
+              // Always resolve, even if no finalData (we'll use accumulatedContent)
               resolve();
             } else {
-              reject(new Error('حدث خطأ أثناء إرسال الرسالة'));
+              // Check if response is HTML (indicates routing/authentication issue)
+              if (xhr.responseText && (xhr.responseText.trim().startsWith('<!DOCTYPE') || xhr.responseText.trim().startsWith('<html'))) {
+                if (__DEV__) {
+                  logger.error('Received HTML response instead of JSON/stream');
+                  logger.error('Status:', xhr.status);
+                  logger.error('Response preview:', xhr.responseText.substring(0, 500));
+                }
+                reject(new Error('الخادم يرجع صفحة HTML. تحقق من الـ URL والـ authentication. قد تكون المشكلة في الـ routing أو الـ token.'));
+                return;
+              }
+              
+              // Try to parse error response
+              let errorMessage = `حدث خطأ أثناء إرسال الرسالة (${xhr.status})`;
+              try {
+                const errorData = JSON.parse(xhr.responseText);
+                if (errorData.error?.message) {
+                  errorMessage = errorData.error.message;
+                } else if (errorData.message) {
+                  errorMessage = errorData.message;
+                }
+              } catch (e) {
+                // Use default message
+                if (__DEV__) {
+                  logger.error('Failed to parse error response:', xhr.responseText?.substring(0, 200));
+                }
+              }
+              reject(new Error(errorMessage));
             }
           };
 
           xhr.onerror = () => {
             clearInterval(pollInterval);
+            if (__DEV__) {
+              logger.error('XHR onerror - Status:', xhr.status);
+              logger.error('XHR onerror - Response:', xhr.responseText?.substring(0, 200));
+            }
             reject(new Error('حدث خطأ في الاتصال'));
           };
+
+          xhr.ontimeout = () => {
+            clearInterval(pollInterval);
+            reject(new Error('انتهت مهلة الاتصال'));
+          };
+
+          // Set timeout to prevent infinite loading
+          xhr.timeout = 120000; // 2 minutes timeout
 
           xhr.send(JSON.stringify({
             message: userMessage.content,
             history: history,
           }));
         });
-      }
 
+      // Process final data or accumulated content
       if (finalData) {
         // Update final message with parsed data
         setMessages(prev => {
@@ -537,7 +573,8 @@ export default function AIChatScreen() {
           if (updated[lastIndex]?.role === 'assistant') {
             updated[lastIndex] = {
               ...updated[lastIndex],
-              content: finalData.response,
+              content: finalData.response || accumulatedContent,
+              isStreaming: false, // Ensure streaming is false
               interactiveQuestion: finalData.interactive_question ? {
                 questionId: questionId,
                 question: finalData.interactive_question.question,
@@ -549,9 +586,28 @@ export default function AIChatScreen() {
           return updated;
         });
 
-        setTokensRemaining(finalData.tokens_remaining);
+        if (finalData.tokens_remaining !== undefined) {
+          setTokensRemaining(finalData.tokens_remaining);
+        }
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         scrollToBottom();
+      } else if (accumulatedContent) {
+        // If we have content but no finalData, use accumulated content
+        setMessages(prev => {
+          const updated = [...prev];
+          const lastIndex = updated.length - 1;
+          if (updated[lastIndex]?.role === 'assistant') {
+            updated[lastIndex] = {
+              ...updated[lastIndex],
+              content: accumulatedContent,
+            };
+          }
+          return updated;
+        });
+        scrollToBottom();
+      } else {
+        // No content received - show error
+        throw new Error('لم يتم استلام أي رد من الخادم');
       }
     } catch (err: any) {
       logger.error('Error sending message:', err);
@@ -713,39 +769,65 @@ export default function AIChatScreen() {
                     style={[
                       styles.messageWrapper,
                       message.role === 'user' ? styles.userMessageWrapper : styles.aiMessageWrapper,
-                      { flexDirection: isRTL ? 'row-reverse' : 'row' },
                     ]}
                   >
+                    {/* AI Message - Left Side */}
                     {message.role === 'assistant' && (
-                      <View style={[styles.avatar, { backgroundColor: `${colors.primary}20` }]}>
-                        <MaterialIcons name="smart-toy" size={20} color={colors.primary} />
+                      <View style={[styles.messageRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+                        <View
+                          style={[
+                            styles.messageBubble,
+                            { backgroundColor: 'rgba(255, 255, 255, 0.1)' },
+                          ]}
+                        >
+                          {message.content ? (
+                            <MarkdownText
+                              key={`message-${index}`}
+                              text={message.content}
+                              style={[
+                                styles.messageText,
+                                { textAlign: isRTL ? 'right' : 'left' },
+                              ]}
+                              textAlign={isRTL ? 'right' : 'left'}
+                              color="#FFFFFF"
+                              isStreaming={message.isStreaming}
+                            />
+                          ) : (
+                            <ThinkingIndicator color={colors.primary} />
+                          )}
+                        </View>
+                        <View style={[styles.avatar, { backgroundColor: `${colors.primary}20` }]}>
+                          <MaterialIcons name="smart-toy" size={20} color={colors.primary} />
+                        </View>
                       </View>
                     )}
-                    <View
-                      style={[
-                        styles.messageBubble,
-                        message.role === 'user'
-                          ? { backgroundColor: colors.primary }
-                          : { backgroundColor: 'rgba(255, 255, 255, 0.1)' },
-                      ]}
-                    >
-                      {message.content ? (
-                        <MarkdownText
-                          text={message.content}
-                          style={[
-                            styles.messageText,
-                            { textAlign: isRTL ? 'right' : 'left' },
-                            message.role === 'user' && { color: '#FFFFFF' },
-                          ]}
-                          textAlign={isRTL ? 'right' : 'left'}
-                        />
-                      ) : (
-                        <ActivityIndicator size="small" color={colors.primary} />
-                      )}
-                    </View>
+                    
+                    {/* User Message - Right Side */}
                     {message.role === 'user' && (
-                      <View style={[styles.avatar, { backgroundColor: `${colors.primary}40` }]}>
-                        <MaterialIcons name="person" size={20} color="#FFFFFF" />
+                      <View style={[styles.messageRow, { flexDirection: isRTL ? 'row' : 'row-reverse' }]}>
+                        <View
+                          style={[
+                            styles.messageBubble,
+                            { backgroundColor: colors.primary },
+                          ]}
+                        >
+                          <MarkdownText
+                            text={message.content}
+                            style={[
+                              styles.messageText,
+                              { textAlign: isRTL ? 'right' : 'left', color: '#FFFFFF' },
+                            ]}
+                            textAlign={isRTL ? 'right' : 'left'}
+                            color="#FFFFFF"
+                            isStreaming={false}
+                          />
+                        </View>
+                        <View style={styles.avatar}>
+                          <AvatarDisplay 
+                            user={user || undefined} 
+                            size={32}
+                          />
+                        </View>
                       </View>
                     )}
                   </View>
@@ -755,9 +837,12 @@ export default function AIChatScreen() {
                 {message.interactiveQuestion && (
                   <View style={styles.interactiveQuestionContainer}>
                     <View style={[styles.interactiveQuestionCard, { borderColor: `${colors.primary}40` }]}>
-                      <Text style={[styles.questionTitle, { textAlign }]}>
-                        {message.interactiveQuestion.question}
-                      </Text>
+                      <MarkdownText
+                        text={message.interactiveQuestion.question}
+                        style={[styles.questionTitle, { textAlign }]}
+                        textAlign={isRTL ? 'right' : 'left'}
+                        color="#FFFFFF"
+                      />
                       
                       <View style={styles.optionsContainer}>
                         {message.interactiveQuestion.options.map((option, optIndex) => {
@@ -803,13 +888,17 @@ export default function AIChatScreen() {
                                     {optIndex + 1}
                                   </Text>
                                 </View>
-                                <Text style={[
+                                <MarkdownText
+                                  text={option}
+                                  style={[
                                   styles.optionText,
                                   { textAlign },
+                                  { writingDirection: isRTL ? 'rtl' : 'ltr' },
                                   (isSelected && (isCorrect || isWrong)) && { color: '#FFFFFF' },
-                                ]}>
-                                  {option}
-                                </Text>
+                                  ]}
+                                  textAlign={isRTL ? 'right' : 'left'}
+                                  color={(isSelected && (isCorrect || isWrong)) ? '#FFFFFF' : '#FFFFFF'}
+                                />
                                 {isSelected && isCorrect && (
                                   <MaterialIcons name="check-circle" size={20} color="#10B981" />
                                 )}
@@ -855,7 +944,9 @@ export default function AIChatScreen() {
                           <MarkdownText
                             text={message.selectedAnswer.analysis}
                             style={[styles.analysisText, { textAlign }]}
+                            isStreaming={false}
                             textAlign={isRTL ? 'right' : 'left'}
+                            color="rgba(255, 255, 255, 0.9)"
                           />
                         </View>
                       )}
@@ -1064,6 +1155,10 @@ const styles = StyleSheet.create({
   aiMessageWrapper: {
     alignItems: 'flex-start',
   },
+  messageRow: {
+    alignItems: 'flex-end',
+    maxWidth: '85%',
+  },
   avatar: {
     width: 32,
     height: 32,
@@ -1231,6 +1326,8 @@ const styles = StyleSheet.create({
   optionContent: {
     alignItems: 'center',
     gap: 12,
+    flex: 1,
+    minWidth: 0,
   },
   optionNumber: {
     width: 32,
@@ -1281,6 +1378,27 @@ const styles = StyleSheet.create({
     color: 'rgba(255, 255, 255, 0.9)',
     fontSize: 15,
     lineHeight: 22,
+  },
+  thinkingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 4,
+  },
+  thinkingDots: {
+    flexDirection: 'row',
+    gap: 4,
+    alignItems: 'center',
+  },
+  thinkingDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  thinkingText: {
+    color: 'rgba(255, 255, 255, 0.6)',
+    fontSize: 13,
+    fontStyle: 'italic',
   },
 });
 

@@ -10,15 +10,43 @@ import Animated, {
   Easing,
   interpolate,
 } from 'react-native-reanimated';
+import { getPerformanceLevel } from '@/constants/PerformanceLevels';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 interface PerformanceCardProps {
   title: string;
-  percentage: number;
+  percentage: number | null;
   correctAnswers: number;
   totalQuestions: number;
   color: string;
   icon?: keyof typeof MaterialIcons.glyphMap;
   delay?: number;
+  isEstimate?: boolean;
+  reliability?: string;
+  level_ar?: string;
+  level_color?: string;
+}
+
+function getReliabilityInfo(reliability: string) {
+  const reliabilityMap: Record<string, { label: string; message: string }> = {
+    insufficient: {
+      label: 'غير كافٍ',
+      message: 'حل المزيد من الأسئلة للحصول على تقييم دقيق',
+    },
+    preliminary: {
+      label: 'تقدير مبدئي',
+      message: 'هذا تقدير مبدئي بناءً على عدد قليل من الأسئلة',
+    },
+    reliable: {
+      label: 'موثوق',
+      message: 'هذا تقييم موثوق بناءً على عدد كافٍ من الأسئلة',
+    },
+    high_confidence: {
+      label: 'ثقة عالية',
+      message: 'هذا تقييم دقيق بناءً على عدد كبير من الأسئلة',
+    },
+  };
+  return reliabilityMap[reliability] || reliabilityMap.insufficient;
 }
 
 export function PerformanceCard({
@@ -29,7 +57,12 @@ export function PerformanceCard({
   color,
   icon = 'analytics',
   delay = 0,
+  isEstimate,
+  reliability,
+  level_ar,
+  level_color,
 }: PerformanceCardProps) {
+  const { isRTL, textAlign, flexDirection } = useLanguage();
   const progress = useSharedValue(0);
   const scale = useSharedValue(0.8);
   const opacity = useSharedValue(0);
@@ -49,14 +82,16 @@ export function PerformanceCard({
       withTiming(1, { duration: 400 })
     );
 
-    // Progress bar animation
-    progress.value = withDelay(
-      delay + 200,
-      withTiming(percentage, {
-        duration: 1000,
-        easing: Easing.bezier(0.25, 0.1, 0.25, 1),
-      })
-    );
+    // Progress bar animation - فقط إذا percentage !== null
+    if (percentage !== null) {
+      progress.value = withDelay(
+        delay + 200,
+        withTiming(percentage, {
+          duration: 1000,
+          easing: Easing.bezier(0.25, 0.1, 0.25, 1),
+        })
+      );
+    }
   }, [percentage, delay]);
 
   const cardStyle = useAnimatedStyle(() => ({
@@ -76,74 +111,101 @@ export function PerformanceCard({
     };
   });
 
-  const getPerformanceLevel = (perc: number) => {
-    if (perc >= 90) return { text: 'ممتاز', color: '#10b981' };
-    if (perc >= 75) return { text: 'جيد جداً', color: '#3b82f6' };
-    if (perc >= 60) return { text: 'جيد', color: '#f59e0b' };
-    if (perc >= 50) return { text: 'مقبول', color: '#ef4444' };
-    return { text: 'ضعيف', color: '#dc2626' };
-  };
-
-  const level = getPerformanceLevel(percentage);
+  // استخدام level_ar + level_color من backend إذا موجودة
+  // وإلا استخدام PerformanceLevels.ts
+  const level = level_ar && level_color
+    ? { text: level_ar, color: level_color }
+    : percentage !== null
+    ? getPerformanceLevel(percentage)
+    : { text: 'غير متاح', color: '#6B7280' };
 
   return (
     <Animated.View style={[styles.card, cardStyle]}>
       <BlurView intensity={20} tint="dark" style={styles.blurView}>
         <View style={styles.cardContent}>
           {/* Header */}
-          <View style={styles.header}>
-            <View style={[styles.iconContainer, { backgroundColor: `${color}20` }]}>
+          <View style={[styles.header, { flexDirection }]}>
+            <View style={[styles.iconContainer, { backgroundColor: `${color}20`, marginHorizontal: 12 }]}>
               <MaterialIcons name={icon} size={28} color={color} />
             </View>
             <View style={styles.titleContainer}>
-              <Text style={styles.title}>{title}</Text>
-              <Text style={[styles.levelBadge, { color: level.color }]}>
+              <Text style={[styles.title, { textAlign }]}>{title}</Text>
+              <Text style={[styles.levelBadge, { color: level.color, textAlign }]}>
                 {level.text}
               </Text>
             </View>
           </View>
 
           {/* Stats */}
-          <View style={styles.statsContainer}>
+          <View style={[styles.statsContainer, { flexDirection }]}>
             <View style={styles.stat}>
-              <Text style={[styles.statNumber, { color }]}>
-                {Math.round(percentage)}%
+              <Text style={[styles.statNumber, { color, textAlign }]}>
+                {percentage !== null ? `${Math.round(percentage)}%` : '-'}
               </Text>
-              <Text style={styles.statLabel}>نسبة الإتقان</Text>
+              <Text style={[styles.statLabel, { textAlign }]}>نسبة الإتقان</Text>
             </View>
             <View style={styles.divider} />
             <View style={styles.stat}>
-              <Text style={styles.statNumber}>
+              <Text style={[styles.statNumber, { textAlign }]}>
                 {correctAnswers}/{totalQuestions}
               </Text>
-              <Text style={styles.statLabel}>الإجابات الصحيحة</Text>
+              <Text style={[styles.statLabel, { textAlign }]}>الإجابات الصحيحة</Text>
             </View>
           </View>
 
-          {/* Progress Bar */}
-          <View style={styles.progressContainer}>
-            <View style={styles.progressBarBackground}>
-              <Animated.View
-                style={[
-                  styles.progressBarFill,
-                  { backgroundColor: color },
-                  progressBarStyle,
-                ]}
-              >
-                {/* Glow effect */}
-                <View
+          {/* Progress Bar - فقط إذا percentage !== null */}
+          {percentage !== null && (
+            <View style={styles.progressContainer}>
+              <View style={styles.progressBarBackground}>
+                <Animated.View
                   style={[
-                    styles.progressGlow,
-                    {
-                      shadowColor: color,
-                      shadowOpacity: 0.8,
-                      shadowRadius: 8,
-                    },
+                    styles.progressBarFill,
+                    { backgroundColor: color },
+                    progressBarStyle,
                   ]}
-                />
-              </Animated.View>
+                >
+                  {/* Glow effect */}
+                  <View
+                    style={[
+                      styles.progressGlow,
+                      {
+                        shadowColor: color,
+                        shadowOpacity: 0.8,
+                        shadowRadius: 8,
+                      },
+                    ]}
+                  />
+                </Animated.View>
+              </View>
             </View>
-          </View>
+          )}
+
+          {/* Reliability Message - يظهر فقط عند is_estimate = true */}
+          {isEstimate && reliability && (
+            <View style={[
+              styles.reliabilityContainer,
+              {
+                [isRTL ? 'borderRightColor' : 'borderLeftColor']: level_color || color,
+                [isRTL ? 'borderRightWidth' : 'borderLeftWidth']: 3,
+                [isRTL ? 'borderLeftWidth' : 'borderRightWidth']: 0,
+              }
+            ]}>
+              <View style={{ flexDirection }}>
+                <MaterialIcons 
+                  name="info-outline" 
+                  size={16} 
+                  color={level_color || color} 
+                  style={{ marginRight: isRTL ? 0 : 8, marginLeft: isRTL ? 8 : 0 }}
+                />
+                <Text style={[styles.reliabilityLabel, { color: level_color || color, textAlign, flex: 1 }]}>
+                  {getReliabilityInfo(reliability).label}
+                </Text>
+              </View>
+              <Text style={[styles.reliabilityMessage, { textAlign, marginTop: 4 }]}>
+                {getReliabilityInfo(reliability).message}
+              </Text>
+            </View>
+          )}
         </View>
       </BlurView>
     </Animated.View>
@@ -177,7 +239,6 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     justifyContent: 'center',
     alignItems: 'center',
-    marginHorizontal: 12,
   },
   titleContainer: {
     flex: 1,
@@ -193,7 +254,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   statsContainer: {
-    flexDirection: 'row',
     justifyContent: 'space-around',
     alignItems: 'center',
     marginBottom: 16,
@@ -238,6 +298,24 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
     borderRadius: 6,
+  },
+  reliabilityContainer: {
+    marginTop: 12,
+    padding: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  reliabilityLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    marginBottom: 6,
+  },
+  reliabilityMessage: {
+    fontSize: 12,
+    color: 'rgba(255, 255, 255, 0.75)',
+    lineHeight: 18,
   },
 });
 

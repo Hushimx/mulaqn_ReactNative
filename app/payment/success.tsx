@@ -44,6 +44,8 @@ export default function PaymentSuccessScreen() {
 
   const handleStartLearning = () => {
     if (trackId) {
+      // مسح subscription cache قبل الانتقال لضمان تحديث الحالة مباشرة
+      api.clearCache(API_ENDPOINTS.CHECK_TRACK_SUBSCRIPTION(trackId as string));
       router.replace(`/(tabs)/tracks/${trackId}`);
     } else {
       router.replace('/(tabs)');

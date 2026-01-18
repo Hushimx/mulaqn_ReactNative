@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Modal, Dimensions, ScrollView, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Modal, Dimensions, ScrollView, Alert, Image } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { MaterialIcons } from '@expo/vector-icons';
 import Animated, { SlideInDown, FadeIn } from 'react-native-reanimated';
@@ -22,6 +22,8 @@ interface QuestionPreviewSheetProps {
   tags?: Tag[];
   allTags?: Tag[]; // All available tags for adding
   savedQuestionId?: number;
+  hasImage?: boolean;
+  imageUrl?: string;
   onClose: () => void;
   onViewPress: () => void;
   onPracticePress: () => void;
@@ -58,6 +60,8 @@ export const QuestionPreviewSheet: React.FC<QuestionPreviewSheetProps> = ({
   tags = [],
   allTags = [],
   savedQuestionId,
+  hasImage = false,
+  imageUrl,
   onClose,
   onViewPress,
   onPracticePress,
@@ -137,6 +141,17 @@ export const QuestionPreviewSheet: React.FC<QuestionPreviewSheetProps> = ({
                   <MaterialIcons name="help-outline" size={24} color="#D4AF37" />
                   <Text style={styles.questionText}>{questionStem}</Text>
                 </View>
+
+                {/* Question Image */}
+                {hasImage && imageUrl && (
+                  <View style={styles.imageContainer}>
+                    <Image 
+                      source={{ uri: imageUrl }} 
+                      style={styles.questionImage}
+                      resizeMode="contain"
+                    />
+                  </View>
+                )}
 
                 {/* Lesson Badge */}
                 <View style={styles.lessonBadge}>
@@ -337,6 +352,20 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 24,
     color: '#FFFFFF',
+  },
+  imageContainer: {
+    marginTop: 16,
+    marginBottom: 8,
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  questionImage: {
+    width: '100%',
+    height: 300,
+    borderRadius: 12,
   },
   lessonBadge: {
     flexDirection: 'row',

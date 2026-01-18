@@ -25,6 +25,11 @@ interface Track {
   code: string;
   name: string;
   description?: string;
+  icon?: string;
+  icon_emoji?: string;
+  primary_color?: string;
+  bg_color?: string;
+  gradient_colors?: string[];
 }
 
 
@@ -114,7 +119,8 @@ export default function ShopScreen() {
             </View>
           ) : (
             tracks.map((track, index) => {
-              const trackColor = getTrackColor(track.id);
+              const trackColors = getTrackColors(track);
+              const trackColor = trackColors.primary;
               return (
                 <Animated.View
                   key={track.id}
@@ -134,7 +140,16 @@ export default function ShopScreen() {
                   >
                   <View style={[styles.trackCardHeader, { flexDirection }]}>
                     <View style={[styles.trackIconContainer, { backgroundColor: `${trackColor}20` }]}>
-                      <MaterialIcons name="school" size={32} color={trackColor} />
+                      <Text style={[styles.trackIconEmoji, { fontSize: 32 }]}>
+                        {track.icon_emoji || track.icon || (() => {
+                          switch (track.id) {
+                            case 1: return '🧠';
+                            case 2: return '📐';
+                            case 3: return '🌐';
+                            default: return '📚';
+                          }
+                        })()}
+                      </Text>
                     </View>
                     <View style={styles.trackInfo}>
                       <Text style={[styles.trackName, { textAlign }]}>{track.name}</Text>
@@ -245,6 +260,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginLeft: 16,
     marginRight: 0,
+  },
+  trackIconEmoji: {
+    textAlign: 'center',
   },
   trackInfo: {
     flex: 1,

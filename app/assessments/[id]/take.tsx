@@ -39,6 +39,9 @@ interface Question {
   id: number;
   stem: string;
   media_url?: string;
+  has_image?: boolean;
+  image_path?: string;
+  image_url?: string;
   hint?: string;
   points: string;
   options: QuestionOption[];
@@ -672,9 +675,7 @@ export default function TakeAssessmentScreen() {
 
           {/* Header - Content Skeleton */}
           <View style={styles.headerContent}>
-            <SkeletonLoader width={70} height={70} borderRadius={12} style={{ marginBottom: 6 }} />
-            <SkeletonLoader width="60%" height={17} borderRadius={6} style={{ marginBottom: 8 }} />
-            <SkeletonLoader width={120} height={16} borderRadius={8} />
+            <SkeletonLoader width={120} height={48} borderRadius={16} />
           </View>
 
           {/* Progress Bar Skeleton */}
@@ -788,14 +789,6 @@ export default function TakeAssessmentScreen() {
 
         {/* Header - Content */}
         <View style={styles.headerContent}>
-          {/* Exam Icon */}
-          <Image 
-            source={require('@/assets/images/exam_photo.png')}
-            style={styles.examIcon}
-            resizeMode="contain"
-          />
-          
-          <Text style={styles.headerTitle}>{attempt.assessment.name}</Text>
           <Animated.View 
             style={[
               styles.timerContainer, 
@@ -805,12 +798,27 @@ export default function TakeAssessmentScreen() {
               }
             ]}
           >
-            <MaterialIcons name="access-time" size={16} color={timeRemaining <= 300 ? "#EF4444" : "#FFFFFF"} />
+            <View style={[
+              styles.timerIconContainer,
+              timeRemaining <= 300 && styles.timerIconContainerWarning
+            ]}>
+              <MaterialIcons 
+                name="access-time" 
+                size={20} 
+                color={timeRemaining <= 300 ? "#EF4444" : "#D4AF37"} 
+              />
+            </View>
             <Text style={[
               styles.timerText,
-              timeRemaining <= 300 && { color: '#EF4444', fontWeight: '700' }
+              timeRemaining <= 300 && styles.timerTextWarning
             ]}>
-              {formatTime(timeRemaining)} دقيقة
+              {formatTime(timeRemaining)}
+            </Text>
+            <Text style={[
+              styles.timerLabel,
+              timeRemaining <= 300 && styles.timerLabelWarning
+            ]}>
+              دقيقة
             </Text>
           </Animated.View>
         </View>
@@ -851,19 +859,28 @@ export default function TakeAssessmentScreen() {
             style={styles.contentScrollView}
             contentContainerStyle={styles.contentScrollContainer}
             showsVerticalScrollIndicator={false}
+            nestedScrollEnabled={true}
+            bounces={true}
+            scrollEnabled={true}
           >
             <View style={styles.questionCard}>
               <Text style={[styles.questionText, { textAlign }]}>
                 {currentQuestion.stem}
               </Text>
               
-              {currentQuestion.media_url && (
+              {(currentQuestion.has_image && currentQuestion.image_url) ? (
+                <Image
+                  source={{ uri: currentQuestion.image_url }}
+                  style={styles.questionImage}
+                  resizeMode="contain"
+                />
+              ) : currentQuestion.media_url ? (
                 <Image
                   source={{ uri: currentQuestion.media_url }}
                   style={styles.questionImage}
                   resizeMode="contain"
                 />
-              )}
+              ) : null}
             </View>
 
             {/* Options */}
@@ -1314,7 +1331,8 @@ const styles = StyleSheet.create({
   headerContent: {
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingBottom: 6,
+    paddingTop: 8,
+    paddingBottom: 12,
   },
   headerButton: {
     width: 40,
@@ -1326,28 +1344,52 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
   },
-  examIcon: {
-    width: 70,
-    height: 70,
-    marginBottom: 6,
-  },
-  headerTitle: {
-    color: '#FFFFFF',
-    fontSize: 17,
-    fontWeight: '700',
-    marginBottom: 4,
-    textAlign: 'center',
+  headerContent: {
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 12,
   },
   timerContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    marginTop: 4,
+    justifyContent: 'center',
+    gap: 8,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: 'rgba(212, 175, 55, 0.3)',
+    backdropFilter: 'blur(10px)',
+  },
+  timerIconContainer: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(212, 175, 55, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  timerIconContainerWarning: {
+    backgroundColor: 'rgba(239, 68, 68, 0.2)',
   },
   timerText: {
-    color: '#FFFFFF',
-    fontSize: 12,
+    color: '#D4AF37',
+    fontSize: 18,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  timerTextWarning: {
+    color: '#EF4444',
+  },
+  timerLabel: {
+    color: 'rgba(255, 255, 255, 0.8)',
+    fontSize: 14,
     fontWeight: '500',
+  },
+  timerLabelWarning: {
+    color: 'rgba(239, 68, 68, 0.8)',
   },
   progressSection: {
     paddingHorizontal: 16,
@@ -1382,7 +1424,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   contentScrollContainer: {
-    paddingBottom: 16,
+    paddingBottom: 120,
+    flexGrow: 1,
   },
   tabsContainer: {
     flexDirection: 'row',

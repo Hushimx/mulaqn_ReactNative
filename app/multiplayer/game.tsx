@@ -51,6 +51,10 @@ interface Participant {
   score: number;
   errors_count: number;
   ready_for_next?: boolean; // ✅ إضافة ready_for_next
+  avatar_shape?: string | null;
+  avatar_color?: string | null;
+  status?: string; // ✅ إضافة status للتحقق من disconnected
+  is_ready?: boolean; // ✅ إضافة is_ready
 }
 
 interface Response {
@@ -121,46 +125,129 @@ export default function MultiplayerGameScreen() {
 
   // ✅ Keep selectedOptionRef in sync with selectedOption state
   // This ensures ref always has the latest value for protection against polling
+  // ✅ CRITICAL: Always update ref when selectedOption is NOT null (user has selected something)
+  // ✅ CRITICAL: ABSOLUTELY NEVER clear ref when selectedOption becomes null - keep it for protection
+  // The ref is the LAST LINE OF DEFENSE - it must NEVER be cleared except when question changes
   useEffect(() => {
+    if (selectedOption !== null) {
+      // User selected an option - update ref immediately
+      // ✅ CRITICAL: Always update ref when selectedOption is not null
+      // This ensures ref always has the latest selection
     selectedOptionRef.current = selectedOption;
+      logger.log('[SYNC REF] Updated selectedOptionRef from selectedOption:', selectedOption);
+    } else {
+      // ✅ CRITICAL: selectedOption became null - but DON'T clear ref!
+      // The ref should keep the last selected value for protection FOREVER
+      // Only clear it when question actually changes (handled in question change useEffect)
+      // This is the KEY to protecting user's selection from being deleted
+      if (selectedOptionRef.current !== null) {
+        logger.log('[SYNC REF] ⚠️ selectedOption became null but keeping ref value for protection:', selectedOptionRef.current);
+      }
+    }
   }, [selectedOption]);
   
-  // ✅ CRITICAL: Protect selectedOption from being reset by fetchStatus
-  // If selectedOption is cleared but ref still has a value, restore it
+  // ✅ CRITICAL: Protect selectedOption from being reset by fetchStatus or useEffect
+  // If selectedOption is cleared but ref still has a value, restore it IMMEDIATELY
+  // This is the LAST LINE OF DEFENSE against any code that tries to delete user's selection
+  // ✅ CRITICAL: This protection works EVEN AFTER hasAnswered becomes true
+  // We need to keep selectedOption visible even after submission (user needs to see their answer)
   useEffect(() => {
-    if (selectedOption === null && selectedOptionRef.current !== null && !hasAnswered && !showReveal) {
-      // Polling or something else tried to clear selectedOption
-      // Restore it from ref to protect user's selection
-      logger.log('[PROTECT SELECTED OPTION] Restoring selectedOption from ref');
+    // ✅ CRITICAL: Check if question actually changed - if not, protect selectedOption
+    const questionId = currentQuestion?.id;
+    const refQuestionId = currentQuestionIdRef.current;
+    const questionActuallyChanged = questionId !== null && refQuestionId !== null && questionId !== refQuestionId;
+    
+    // ✅ CRITICAL: Only restore if:
+    // 1. selectedOption is null but ref has a value (something tried to delete it)
+    // 2. Question has NOT changed (if question changed, it's OK to clear it)
+    // 3. We're not in reveal state (reveal state is OK to clear)
+    // ✅ CRITICAL: This protection works EVEN IF hasAnswered is true
+    // User needs to see their answer even after submission
+    if (selectedOption === null && selectedOptionRef.current !== null && !questionActuallyChanged && !showReveal) {
+      // Something tried to clear selectedOption - restore it IMMEDIATELY
+      // This protects against:
+      // 1. fetchStatus trying to reset it
+      // 2. useEffect trying to reset it when question object reference changes
+      // 3. Any other code that tries to interfere
+      logger.log('[PROTECT SELECTED OPTION] ⚠️ RESTORING selectedOption from ref - something tried to delete it!', {
+        selectedOption,
+        selectedOptionRef: selectedOptionRef.current,
+        hasAnswered,
+        showReveal,
+        currentQuestionId: currentQuestion?.id,
+        refQuestionId: currentQuestionIdRef.current,
+        questionActuallyChanged
+      });
       setSelectedOption(selectedOptionRef.current);
     }
-  }, [selectedOption, hasAnswered, showReveal]);
+    
+    // ✅ CRITICAL: Also protect selectedOptionRef - if it was cleared but selectedOption has value, restore it
+    // This is a double protection - both state and ref must be protected
+    if (selectedOptionRef.current === null && selectedOption !== null && !questionActuallyChanged && !showReveal) {
+      logger.log('[PROTECT SELECTED OPTION REF] ⚠️ RESTORING selectedOptionRef from selectedOption - ref was cleared!', {
+        selectedOption,
+        selectedOptionRef: selectedOptionRef.current,
+        hasAnswered,
+        showReveal,
+        currentQuestionId: currentQuestion?.id,
+        refQuestionId: currentQuestionIdRef.current,
+        questionActuallyChanged
+      });
+      selectedOptionRef.current = selectedOption;
+    }
+  }, [selectedOption, hasAnswered, showReveal, currentQuestion?.id]);
 
-  // ✅ Reset state and refs when question changes
+  // ✅ Track current question ID separately to avoid useEffect firing on object reference changes
+  const currentQuestionId = useMemo(() => currentQuestion?.id ?? null, [currentQuestion?.id]);
+  
+  // ✅ Reset state and refs when question ID actually changes (not object reference)
+  // ✅ CRITICAL: selectedOption is NOT in dependencies - we don't want to reset when user selects an option
+  // This useEffect should ONLY run when question ID actually changes
   useEffect(() => {
-    if (currentQuestion) {
-      // Update ref to track current question ID
-      currentQuestionIdRef.current = currentQuestion.id;
+    if (currentQuestionId !== null) {
+      const newQuestionId = currentQuestionId;
+      const previousQuestionId = currentQuestionIdRef.current;
       
+      // ✅ CRITICAL: Only reset if question ID actually changed
+      // This prevents resetting selectedOption when currentQuestion object reference changes but ID is same
+      if (previousQuestionId !== null && previousQuestionId !== newQuestionId) {
+        // Question actually changed - reset all state
+        logger.log('[Question Changed] Reset all state for new question:', newQuestionId, 'from:', previousQuestionId);
+        
+        // Update ref to track current question ID
+        currentQuestionIdRef.current = newQuestionId;
+        
       // Reset flags when question changes (new question)
       hasBothAnsweredFromAnswerRef.current = false;
       countdownStartedRef.current = false;
       hasAnsweredRef.current = false;
       isSubmittingRef.current = false;
       selectedOptionRef.current = null;
-      
-      // Reset state for new question
-      setHasAnswered(false);
-      setSelectedOption(null);
-      setShowReveal(false);
-      setHasBothAnswered(false);
-      setResponses([]);
-      setCorrectOptionId(null);
-      setReadyForNext(false);
-      setAllReadyForNext(false);
-      logger.log('[Question Changed] Reset all state for new question:', currentQuestion.id);
+        
+        // Reset state for new question
+        setHasAnswered(false);
+        setSelectedOption(null);
+        setShowReveal(false);
+        setHasBothAnswered(false);
+        setResponses([]);
+        setCorrectOptionId(null);
+        setReadyForNext(false);
+        setAllReadyForNext(false);
+      } else if (previousQuestionId === null) {
+        // First time setting question - just update ref, don't reset state
+        currentQuestionIdRef.current = newQuestionId;
+        logger.log('[Question Initialized] Setting question ID:', newQuestionId);
+      } else {
+        // Same question ID - just update ref if needed, but DON'T reset state
+        // This prevents deleting user's selectedOption when currentQuestion object reference changes
+        if (currentQuestionIdRef.current !== newQuestionId) {
+          currentQuestionIdRef.current = newQuestionId;
+        }
+        // ✅ CRITICAL: Don't log or check selectedOption here - this useEffect should NOT care about selectedOption
+        // selectedOption is managed separately and should NEVER be touched by this useEffect
+      }
     }
-  }, [currentQuestion?.id]);
+  }, [currentQuestionId]); // ✅ CRITICAL: Removed selectedOption from dependencies - this is the KEY fix!
 
   const sessionIdNum = parseInt(sessionId || '0');
   
@@ -225,24 +312,62 @@ export default function MultiplayerGameScreen() {
             
             // Check if question changed (new question ID) - use ref to avoid stale closure
             const newQuestionId = eventData.current_question?.id;
-            const questionChanged = newQuestionId && newQuestionId !== currentQuestionIdRef.current;
+            const previousQuestionId = currentQuestionIdRef.current;
+            const currentQuestionId = currentQuestion?.id;
+            // ✅ CRITICAL: Only consider it changed if previousQuestionId is not null and different
+            // This prevents resetting selectedOption when WebSocket sends same question with different object reference
+            const questionChanged = newQuestionId && previousQuestionId !== null && newQuestionId !== previousQuestionId;
             
-            // If question changed, reset all answer-related state FIRST
+            // ✅ CRITICAL: Only reset if question ID actually changed
             if (questionChanged && newQuestionId) {
-              logger.log('[WebSocket] 🔄 Question changed, resetting state:', newQuestionId);
+              logger.log('[WebSocket] 🔄 Question changed, resetting state:', newQuestionId, 'from:', previousQuestionId);
+              
+              // ✅ CRITICAL: Update question ID ref FIRST to prevent fetchStatus from resetting
+              currentQuestionIdRef.current = newQuestionId;
+              
+              // Reset states FIRST
               setHasAnswered(false);
+              hasAnsweredRef.current = false;
               setSelectedOption(null);
+              selectedOptionRef.current = null;
               setShowReveal(false);
               setHasBothAnswered(false);
+              hasBothAnsweredFromAnswerRef.current = false;
               setResponses([]);
               setCorrectOptionId(null);
               setReadyForNext(false);
               setAllReadyForNext(false);
-              // Reset refs
-              hasAnsweredRef.current = false;
-              selectedOptionRef.current = null;
-              hasBothAnsweredFromAnswerRef.current = false;
               countdownStartedRef.current = false;
+              
+              // ✅ CRITICAL: Update currentQuestion IMMEDIATELY after resetting states
+              if (eventData.current_question) {
+                setCurrentQuestion({
+                  id: eventData.current_question.id,
+                  stem: eventData.current_question.stem,
+                  options: eventData.current_question.options || [],
+                  question_order: eventData.current_question.question_order || 1,
+                  total_questions: currentQuestion?.total_questions || 3,
+                } as Question);
+                setCurrentQuestionOrder(eventData.current_question.question_order || 1);
+                logger.log('[WebSocket] ✅ Question updated successfully after reset:', newQuestionId);
+              }
+            } else if (newQuestionId && previousQuestionId === null) {
+              // First time setting question - just update ref and question
+              currentQuestionIdRef.current = newQuestionId;
+              if (eventData.current_question) {
+                setCurrentQuestion({
+                  id: eventData.current_question.id,
+                  stem: eventData.current_question.stem,
+                  options: eventData.current_question.options || [],
+                  question_order: eventData.current_question.question_order || 1,
+                  total_questions: 3,
+                } as Question);
+                setCurrentQuestionOrder(eventData.current_question.question_order || 1);
+              }
+              logger.log('[WebSocket] Question initialized:', newQuestionId);
+            } else if (newQuestionId && newQuestionId === previousQuestionId) {
+              // Same question - don't reset anything, protect user's selection
+              logger.log('[WebSocket] Same question received - protecting user selection:', newQuestionId);
             }
             
             // ✅ Update state from WebSocket data
@@ -256,6 +381,20 @@ export default function MultiplayerGameScreen() {
                 router.replace({
                   pathname: '/multiplayer/results',
                   params: { sessionId: sessionIdNum.toString() }
+                });
+                return; // Stop processing further updates
+              }
+              
+              // ✅ CRITICAL: Check if session cancelled (disconnection) - navigate to disconnected screen
+              if (eventData.status === 'cancelled') {
+                logger.log('[WebSocket] ⚠️ Session cancelled - participant disconnected');
+                console.log('[WebSocket] ⚠️ Session cancelled - participant disconnected');
+                router.replace({
+                  pathname: '/multiplayer/disconnected',
+                  params: { 
+                    reason: 'disconnected',
+                    sessionId: sessionIdNum.toString() 
+                  }
                 });
                 return; // Stop processing further updates
               }
@@ -291,9 +430,56 @@ export default function MultiplayerGameScreen() {
                 return; // Stop processing
               }
             } else if (eventData.current_question) {
-              setCurrentQuestion(eventData.current_question);
-              setCurrentQuestionOrder(eventData.current_question.question_order);
-              logger.log('[WebSocket] Current question updated:', eventData.current_question.id);
+              // ✅ CRITICAL: Only update currentQuestion if question ID actually changed
+              // This prevents resetting selectedOption when WebSocket sends same question with different object reference
+              const newQuestionId = eventData.current_question.id;
+              const previousQuestionId = currentQuestionIdRef.current;
+              
+              if (previousQuestionId === null || previousQuestionId !== newQuestionId) {
+                // Question ID changed or first time - safe to update
+                logger.log('[WebSocket] 🔄 Question ID changed - updating immediately:', {
+                  oldId: previousQuestionId,
+                  newId: newQuestionId
+                });
+                // ✅ CRITICAL: Update question ID ref FIRST to prevent fetchStatus from resetting
+                currentQuestionIdRef.current = newQuestionId;
+                setCurrentQuestion(eventData.current_question);
+                setCurrentQuestionOrder(eventData.current_question.question_order);
+                // Reset state for new question
+                setSelectedOption(null);
+                selectedOptionRef.current = null;
+                setHasAnswered(false);
+                hasAnsweredRef.current = false;
+                setShowReveal(false);
+                setHasBothAnswered(false);
+                setResponses([]);
+                setCorrectOptionId(null);
+                setReadyForNext(false);
+                setAllReadyForNext(false);
+                logger.log('[WebSocket] Current question updated:', newQuestionId);
+              } else {
+                // Same question ID - don't update currentQuestion object to protect user selection
+                
+                // ✅ CRITICAL: If selectedOption was cleared but ref still has value, restore it IMMEDIATELY
+                // This protects against any code that might have cleared it (even after hasAnswered becomes true)
+                if (selectedOption === null && selectedOptionRef.current !== null) {
+                  logger.log('[WebSocket] ⚠️ RESTORING selectedOption - it was cleared but ref has value!', {
+                    selectedOption,
+                    selectedOptionRef: selectedOptionRef.current,
+                    hasAnswered,
+                    showReveal,
+                    questionId: newQuestionId
+                  });
+                  setSelectedOption(selectedOptionRef.current);
+                }
+                
+                logger.log('[WebSocket] Same question ID - NOT updating currentQuestion object to protect user selection:', {
+                  questionId: newQuestionId,
+                  hasSelectedOption: selectedOption !== null || selectedOptionRef.current !== null,
+                  selectedOption,
+                  selectedOptionRef: selectedOptionRef.current
+                });
+              }
             }
             
             // ✅ Stop loading when we receive session data from WebSocket
@@ -316,10 +502,105 @@ export default function MultiplayerGameScreen() {
             if (eventData.all_ready_for_next !== undefined) {
               logger.log('[WebSocket] all_ready_for_next updated:', eventData.all_ready_for_next);
               setAllReadyForNext(eventData.all_ready_for_next);
+              
+              // ✅ CRITICAL: If all ready and we have a new question, update immediately
+              // This ensures both users move to next question simultaneously
+              if (eventData.all_ready_for_next && eventData.current_question) {
+                const newQuestionId = eventData.current_question.id;
+                const previousQuestionId = currentQuestionIdRef.current;
+                const currentQuestionId = currentQuestion?.id;
+                
+                // ✅ CRITICAL: Update if question ID changed OR if currentQuestion is undefined
+                // This handles case where ref has question ID but state doesn't
+                if (previousQuestionId !== null && previousQuestionId !== newQuestionId) {
+                  logger.log('[WebSocket] ✅ All ready for next - updating to new question IMMEDIATELY:', {
+                    oldId: previousQuestionId,
+                    newId: newQuestionId,
+                    currentQuestionId
+                  });
+                  
+                  // ✅ CRITICAL: Update question ID ref FIRST to prevent fetchStatus from resetting
+                  currentQuestionIdRef.current = newQuestionId;
+                  
+                  // Reset states FIRST
+                  setShowReveal(false);
+                  setResponses([]);
+                  setCorrectOptionId(null);
+                  setSelectedOption(null);
+                  selectedOptionRef.current = null;
+                  setHasAnswered(false);
+                  hasAnsweredRef.current = false;
+                  setHasBothAnswered(false);
+                  hasBothAnsweredFromAnswerRef.current = false;
+                  setReadyForNext(false);
+                  
+                  // ✅ CRITICAL: Update question IMMEDIATELY - don't wait for anything
+                  setCurrentQuestion({
+                    id: eventData.current_question.id,
+                    stem: eventData.current_question.stem,
+                    options: eventData.current_question.options || [],
+                    question_order: eventData.current_question.question_order || 1,
+                    total_questions: currentQuestion?.total_questions || 3,
+                  } as Question);
+                  setCurrentQuestionOrder(eventData.current_question.question_order || 1);
+                  
+                  logger.log('[WebSocket] ✅ Question updated successfully via WebSocket');
+                } else if (previousQuestionId === null || currentQuestionId === undefined || currentQuestionId !== newQuestionId) {
+                  // First time OR currentQuestion is undefined OR question ID changed
+                  logger.log('[WebSocket] Updating question (first time or state out of sync):', {
+                    previousQuestionId,
+                    newQuestionId,
+                    currentQuestionId
+                  });
+                  currentQuestionIdRef.current = newQuestionId;
+                  
+                  // Reset states if question actually changed
+                  if (currentQuestionId !== undefined && currentQuestionId !== newQuestionId) {
+                    setShowReveal(false);
+                    setResponses([]);
+                    setCorrectOptionId(null);
+                    setSelectedOption(null);
+                    selectedOptionRef.current = null;
+                    setHasAnswered(false);
+                    hasAnsweredRef.current = false;
+                    setHasBothAnswered(false);
+                    hasBothAnsweredFromAnswerRef.current = false;
+                    setReadyForNext(false);
+                  }
+                  
+                  setCurrentQuestion({
+                    id: eventData.current_question.id,
+                    stem: eventData.current_question.stem,
+                    options: eventData.current_question.options || [],
+                    question_order: eventData.current_question.question_order || 1,
+                    total_questions: currentQuestion?.total_questions || 3,
+                  } as Question);
+                  setCurrentQuestionOrder(eventData.current_question.question_order || 1);
+                }
+              } else if (eventData.all_ready_for_next && !eventData.current_question) {
+                // All ready but no question yet - fetch status to get it IMMEDIATELY
+                logger.log('[WebSocket] All ready but no question in event - fetching status IMMEDIATELY');
+                fetchStatus(true).then(() => {
+                  // After fetching, check if question changed
+                  // fetchStatus will update currentQuestion if both are ready
+                  logger.log('[WebSocket] Status fetched after all_ready_for_next');
+                }).catch((error) => {
+                  logger.error('[WebSocket] Error fetching status:', error);
+                });
+              }
             }
             if (eventData.all_ready !== undefined && eventData.all_ready) {
               logger.log('[WebSocket] all_ready is true - both participants ready');
               setAllReadyForNext(true);
+              
+              // ✅ CRITICAL: If all_ready is true, fetch status immediately to get new question
+              // This ensures both users move to next question simultaneously
+              if (!eventData.current_question) {
+                logger.log('[WebSocket] All ready but no question - fetching status IMMEDIATELY');
+                fetchStatus(true).catch((error) => {
+                  logger.error('[WebSocket] Error fetching status after all_ready:', error);
+                });
+              }
             }
           },
           onQuestionRevealed: (data) => {
@@ -330,9 +611,20 @@ export default function MultiplayerGameScreen() {
             const responses = data.responses || [];
             console.log('[WebSocket] Setting reveal state:', { correctOptionId, responsesCount: responses.length });
             logger.log('[WebSocket] Setting reveal state:', { correctOptionId, responsesCount: responses.length });
+            
+            // ✅ CRITICAL: Clear countdown timer if it's running
+            // This prevents the countdown from interfering with the reveal
+            if (revealTimerRef.current) {
+              logger.log('[WebSocket] Clearing countdown timer - question revealed via WebSocket');
+              clearInterval(revealTimerRef.current);
+              revealTimerRef.current = null;
+            }
+            countdownStartedRef.current = false;
+            
             setCorrectOptionId(correctOptionId);
             setResponses(responses);
             setShowReveal(true);
+            setRevealTimer(0); // Reset timer immediately
             console.log('[WebSocket] Reveal state updated - correct_option_id:', correctOptionId);
             logger.log('[WebSocket] Reveal state updated - correct_option_id:', correctOptionId);
           },
@@ -342,11 +634,70 @@ export default function MultiplayerGameScreen() {
             if (eventData.all_ready || data.all_ready) {
               logger.log('[WebSocket] ✅ All participants ready - next question ready');
               setAllReadyForNext(true);
+              
+              // ✅ CRITICAL: If all ready, fetch status immediately to get new question
+              // This ensures both users move to next question simultaneously
+              // Don't wait for periodic polling - fetch immediately
+              // ✅ CRITICAL: Use fetchStatus(true) to bypass WebSocket check
+              logger.log('[WebSocket] ✅ All ready - fetching status immediately for next question');
+              fetchStatus(true).then((responseData) => {
+                // ✅ CRITICAL: Check response data directly (not state) to see if both are ready
+                // This ensures we catch the transition even if state hasn't updated yet
+                if (responseData?.all_ready_for_next && responseData?.current_question) {
+                  const newQuestionId = responseData.current_question.id;
+                  const currentQuestionId = currentQuestion?.id;
+                  
+                  // If question changed, update immediately
+                  if (currentQuestionId !== newQuestionId) {
+                    logger.log('[WebSocket] ✅ Both ready detected in response - updating question immediately:', {
+                      oldId: currentQuestionId,
+                      newId: newQuestionId
+                    });
+                    
+                    // Update question immediately
+                    currentQuestionIdRef.current = newQuestionId;
+                    setShowReveal(false);
+                    setResponses([]);
+                    setCorrectOptionId(null);
+                    setSelectedOption(null);
+                    selectedOptionRef.current = null;
+                    setHasAnswered(false);
+                    hasAnsweredRef.current = false;
+                    setHasBothAnswered(false);
+                    hasBothAnsweredFromAnswerRef.current = false;
+                    setReadyForNext(false);
+                    setAllReadyForNext(false);
+                    
+                    setCurrentQuestion(responseData.current_question);
+                    setCurrentQuestionOrder(responseData.current_question.question_order);
+                    
+                    logger.log('[WebSocket] ✅ Question updated successfully from fetchStatus response');
+                  }
+                }
+              }).catch((error) => {
+                logger.error('[WebSocket] Error fetching status after all ready:', error);
+              });
             }
             // Update participant ready state if needed
             if (eventData.is_ready !== undefined) {
               logger.log('[WebSocket] Participant ready state:', eventData.is_ready);
             }
+          },
+          onParticipantDisconnected: (data) => {
+            logger.log('[WebSocket] ⚠️ Participant disconnected:', data);
+            console.log('[WebSocket] ⚠️ Participant disconnected:', data);
+            const eventData = data.data || data;
+            
+            // ✅ CRITICAL: Navigate to disconnected screen immediately
+            logger.log('[WebSocket] Navigating to disconnected screen - reason:', eventData.reason || 'disconnected');
+            console.log('[WebSocket] Navigating to disconnected screen - reason:', eventData.reason || 'disconnected');
+            router.replace({
+              pathname: '/multiplayer/disconnected',
+              params: { 
+                reason: eventData.reason || 'disconnected',
+                sessionId: sessionIdNum.toString() 
+              }
+            });
           },
           onConnected: () => {
             logger.log('[WebSocket] ✅✅✅ CONNECTED - stopping ALL polling');
@@ -372,9 +723,13 @@ export default function MultiplayerGameScreen() {
             // ✅ Fetch initial status ONCE after WebSocket connection to get current state
             // This is needed to populate initial data (participants, current_question, etc.)
             // After this, we rely on WebSocket events only
-            logger.log('[WebSocket] Fetching initial status ONCE after connection');
-            initialFetchDoneRef.current = false; // Reset flag
-            fetchStatus(true); // Allow fetch even if WebSocket is connected (initial fetch)
+            // ✅ CRITICAL: Only fetch if we haven't fetched yet (prevent excessive calls)
+            if (!initialFetchDoneRef.current) {
+              logger.log('[WebSocket] Fetching initial status ONCE after connection');
+              fetchStatus(true); // Allow fetch even if WebSocket is connected (initial fetch)
+            } else {
+              logger.log('[WebSocket] Skipping initial fetch - already done');
+            }
             
             // ✅ Safety timeout: Stop loading after 3 seconds if no data received
             // This prevents infinite loading if WebSocket events are delayed
@@ -387,8 +742,26 @@ export default function MultiplayerGameScreen() {
           },
           onDisconnected: () => {
             logger.log('[WebSocket] ❌ Disconnected - starting polling fallback');
+            console.log('[WebSocket] ❌ Disconnected - starting polling fallback');
             // Update WebSocket connection state
             isWebSocketConnectedRef.current = false;
+            
+            // ✅ CRITICAL: If game is in progress, check for disconnection after delay
+            // This gives WebSocket time to reconnect before declaring disconnection
+            if (status === 'in_progress') {
+              setTimeout(() => {
+                // Check if WebSocket still disconnected after 10 seconds
+                if (!isWebSocketConnectedRef.current && !websocket.isConnected() && status === 'in_progress') {
+                  logger.log('[WebSocket] ⚠️ WebSocket still disconnected after 10s - checking for participant timeout');
+                  console.log('[WebSocket] ⚠️ WebSocket still disconnected after 10s - checking for participant timeout');
+                  // Fetch status to check if other participant disconnected
+                  fetchStatus(true).catch((error) => {
+                    logger.error('[WebSocket] Error checking status after disconnect:', error);
+                  });
+                }
+              }, 10000); // Wait 10 seconds before checking
+            }
+            
             // Fallback to polling if WebSocket disconnects
             if (!pollingInterval.current) {
               logger.log('[Polling] Starting fallback polling after WebSocket disconnect');
@@ -428,8 +801,8 @@ export default function MultiplayerGameScreen() {
           if (!wsConnected) {
             logger.log('[Polling] ⚠️ Starting fallback polling after WebSocket connection failure (5s delay)');
             // Fetch status once when starting polling
-            fetchStatus();
-            startPolling();
+    fetchStatus();
+    startPolling();
           } else {
             logger.log('[Polling] ✅ WebSocket connected during delay - skipping polling');
             isWebSocketConnectedRef.current = true; // Sync the ref
@@ -495,6 +868,86 @@ export default function MultiplayerGameScreen() {
     }
   }, [status, currentQuestion, loading, sessionIdNum, router]);
 
+  // ✅ CRITICAL: Monitor for disconnection - check status cancelled and participant disconnected
+  useEffect(() => {
+    // Check if session is cancelled
+    if (status === 'cancelled') {
+      logger.log('[Multiplayer] ⚠️ Session cancelled - participant disconnected');
+      console.log('[Multiplayer] ⚠️ Session cancelled - participant disconnected');
+      router.replace({
+        pathname: '/multiplayer/disconnected',
+        params: { 
+          reason: 'disconnected',
+          sessionId: sessionIdNum.toString() 
+        }
+      });
+      return;
+    }
+
+    // Check if other participant is disconnected
+    const otherParticipant = participants.find((p) => p.user_id !== currentUserId);
+    if (otherParticipant && otherParticipant.status === 'disconnected') {
+      logger.log('[Multiplayer] ⚠️ Other participant disconnected');
+      console.log('[Multiplayer] ⚠️ Other participant disconnected');
+      router.replace({
+        pathname: '/multiplayer/disconnected',
+        params: { 
+          reason: 'disconnected',
+          sessionId: sessionIdNum.toString() 
+        }
+      });
+      return;
+    }
+  }, [status, participants, currentUserId, sessionIdNum, router]);
+
+  // ✅ CRITICAL: Periodic check for disconnection (backup mechanism)
+  // This checks every 15 seconds if the other participant is still active
+  // This is a backup in case WebSocket events are missed or backend job is delayed
+  useEffect(() => {
+    // Only check if game is in progress
+    if (status !== 'in_progress') {
+      return;
+    }
+
+    logger.log('[Multiplayer] 🔍 Starting periodic disconnection check (every 15 seconds)');
+    console.log('[Multiplayer] 🔍 Starting periodic disconnection check (every 15 seconds)');
+
+      const checkInterval = setInterval(() => {
+      // Only check if still in progress
+      if (status === 'in_progress') {
+        logger.log('[Multiplayer] 🔍 Periodic disconnection check - fetching status');
+        console.log('[Multiplayer] 🔍 Periodic disconnection check - fetching status');
+        // Fetch status to check for participant_timeout_detected
+        // This will check ALL participants, not just the current user
+        fetchStatus(true).catch((error) => {
+          logger.error('[Multiplayer] Error in periodic disconnection check:', error);
+        });
+      }
+    }, 30000); // Check every 30 seconds (reduced from 15 to improve performance)
+
+    // ✅ CRITICAL: Periodic activity update to prevent false timeout detection
+    // Update activity every 30 seconds (less than 180 second threshold) to ensure active users are not disconnected
+    // This allows users to think and discuss questions without being disconnected
+    logger.log('[Multiplayer] 🔄 Starting periodic activity update (every 30 seconds)');
+    const activityInterval = setInterval(() => {
+      // Only update if still in progress
+      if (status === 'in_progress') {
+        logger.log('[Multiplayer] 🔄 Periodic activity update - keeping user active');
+        // Update activity in backend to prevent false timeout detection
+        api.post(API_ENDPOINTS.MULTIPLAYER_ACTIVITY(sessionIdNum)).catch((error) => {
+          // Silent fail - don't block if activity update fails
+          logger.warn('[Multiplayer] Failed to update activity:', error);
+        });
+      }
+    }, 30000); // Update every 30 seconds (less than 180 second threshold)
+
+    return () => {
+      logger.log('[Multiplayer] 🛑 Stopping periodic disconnection check');
+      clearInterval(checkInterval);
+      clearInterval(activityInterval);
+    };
+  }, [status, sessionIdNum]); // Re-run if status changes
+
   // ✅ NO POLLING - Rely on WebSocket events only
   // WebSocket will send session.updated event when all participants are ready
   // This will update all_ready_for_next and trigger next question transition
@@ -531,6 +984,21 @@ export default function MultiplayerGameScreen() {
     });
 
     if (hasBothAnswered && !showReveal && currentQuestion) {
+      // ✅ CRITICAL: If timer is stuck (hasBothAnswered is true but timer is not running)
+      // Restart the timer immediately
+      if (!revealTimerRef.current && revealTimer > 0 && revealTimer < 3) {
+        logger.log('[COUNTDOWN] ⚠️ Timer appears stuck - restarting countdown', {
+          revealTimer,
+          hasBothAnswered,
+          showReveal,
+          countdownStarted: countdownStartedRef.current
+        });
+        // Reset timer to 3 and restart
+        setRevealTimer(3);
+        countdownStartedRef.current = true;
+        hasBothAnsweredRef.current = true;
+      }
+      
       // ✅ CRITICAL: Prevent multiple timers
       if (revealTimerRef.current) {
         logger.log('[COUNTDOWN] Timer already running, clearing it');
@@ -539,9 +1007,15 @@ export default function MultiplayerGameScreen() {
       }
       
       // ✅ CRITICAL: Double-check conditions before starting timer
-      if (showReveal || countdownStartedRef.current) {
-        logger.log('[COUNTDOWN] Skipping - showReveal or countdown already started');
+      if (showReveal) {
+        logger.log('[COUNTDOWN] Skipping - showReveal is true');
         return;
+      }
+
+      // ✅ CRITICAL: If countdown already started but timer is not running, restart it
+      if (countdownStartedRef.current && !revealTimerRef.current) {
+        logger.log('[COUNTDOWN] ⚠️ Countdown started but timer not running - restarting');
+        setRevealTimer(3);
       }
 
       logger.log('[COUNTDOWN] Starting countdown timer');
@@ -558,11 +1032,20 @@ export default function MultiplayerGameScreen() {
 
       revealTimerRef.current = setInterval(() => {
         // ✅ CRITICAL: Use refs to get current values (avoid stale closures)
-        if (showRevealRef.current || !hasBothAnsweredRef.current) {
-          logger.log('[COUNTDOWN] Timer stopped - conditions changed', {
-            showReveal: showRevealRef.current,
-            hasBothAnswered: hasBothAnsweredRef.current
-          });
+        // Check if reveal was triggered by WebSocket or handleReveal
+        if (showRevealRef.current) {
+          logger.log('[COUNTDOWN] Timer stopped - showReveal is true (reveal already triggered)');
+          if (revealTimerRef.current) {
+            clearInterval(revealTimerRef.current);
+            revealTimerRef.current = null;
+          }
+          countdownStartedRef.current = false;
+          return;
+        }
+        
+        // ✅ CRITICAL: Check if hasBothAnswered is still true
+        if (!hasBothAnsweredRef.current) {
+          logger.log('[COUNTDOWN] Timer stopped - hasBothAnswered is false');
           if (revealTimerRef.current) {
             clearInterval(revealTimerRef.current);
             revealTimerRef.current = null;
@@ -577,7 +1060,36 @@ export default function MultiplayerGameScreen() {
         }
 
         setRevealTimer((prev) => {
-          logger.log('[COUNTDOWN] Timer tick:', prev);
+          logger.log('[COUNTDOWN] Timer tick:', prev, {
+            showReveal: showRevealRef.current,
+            hasBothAnswered: hasBothAnsweredRef.current,
+            countdownStarted: countdownStartedRef.current
+          });
+          
+          // ✅ CRITICAL: Double-check conditions before decrementing
+          if (showRevealRef.current) {
+            logger.log('[COUNTDOWN] Timer stopped during tick - showReveal is true');
+            if (revealTimerRef.current) {
+              clearInterval(revealTimerRef.current);
+              revealTimerRef.current = null;
+            }
+            countdownStartedRef.current = false;
+            return prev; // Don't change timer value
+          }
+          
+          // ✅ CRITICAL: Only check hasBothAnswered if countdown hasn't started yet
+          // Once countdown starts, it should complete regardless of hasBothAnswered
+          // (unless showReveal becomes true)
+          if (!hasBothAnsweredRef.current && !countdownStartedRef.current) {
+            logger.log('[COUNTDOWN] Timer stopped during tick - hasBothAnswered is false and countdown not started');
+            if (revealTimerRef.current) {
+              clearInterval(revealTimerRef.current);
+              revealTimerRef.current = null;
+            }
+            countdownStartedRef.current = false;
+            return prev; // Don't change timer value
+          }
+          
           if (prev <= 1) {
             logger.log('[COUNTDOWN] Countdown complete, calling handleReveal');
             if (revealTimerRef.current) {
@@ -585,6 +1097,8 @@ export default function MultiplayerGameScreen() {
               revealTimerRef.current = null;
             }
             countdownStartedRef.current = false;
+            // ✅ CRITICAL: Call handleReveal immediately (not asynchronously)
+            // This ensures reveal happens right away
             handleReveal();
             return 0;
           }
@@ -626,7 +1140,7 @@ export default function MultiplayerGameScreen() {
       // After that, rely on WebSocket events only
       if (!allowIfWebSocketConnected && initialFetchDoneRef.current) {
         logger.log('[FETCH STATUS] ⚠️ Skipping fetch - WebSocket is connected, relying on WebSocket events');
-        return;
+        return null;
       }
       
       // Mark initial fetch as done
@@ -672,26 +1186,103 @@ export default function MultiplayerGameScreen() {
           all_ready_for_next?: boolean;
         };
       }>(API_ENDPOINTS.MULTIPLAYER_STATUS(sessionIdNum));
+      
+      // Store response data for return value
+      let responseDataToReturn: any = null;
 
       if (response && response.ok && response.data) {
-        setStatus(response.data.status);
-        setParticipants(response.data.participants);
+        const responseData = response.data; // Store for return value
+        responseDataToReturn = responseData; // Store for return
+        setStatus(responseData.status);
+        setParticipants(responseData.participants);
         
         // ✅ CRITICAL: Check if question changed FIRST before updating any states
         // This prevents resetting states when question hasn't changed
         let questionChanged = false;
         const currentQuestionId = currentQuestion?.id;
+        const currentQuestionIdFromRef = currentQuestionIdRef.current; // ✅ Use ref as source of truth
         
-        if (response.data.current_question) {
-          const newQuestionOrder = response.data.current_question.question_order;
-          const newQuestionId = response.data.current_question.id;
-          const currentQuestionId = currentQuestion?.id;
+        if (responseData.current_question) {
+          const newQuestionOrder = responseData.current_question.question_order;
+          const newQuestionId = responseData.current_question.id;
           
-          // ✅ CRITICAL: Check both question_order AND question ID to detect changes
-          // This handles edge cases where question_order might not update correctly
-          const orderChanged = currentQuestionOrder !== 0 && currentQuestionOrder !== newQuestionOrder;
-          const idChanged = currentQuestionId !== null && currentQuestionId !== newQuestionId;
-          questionChanged = orderChanged || idChanged;
+          // ✅ CRITICAL: Use ref as source of truth (not state) to detect question changes
+          // The ref is updated immediately by handleNext/WebSocket, so it's more reliable
+          // If ref has a different ID than API response, it means question was already updated
+          // In this case, we should NOT update it again (to prevent resetting selectedOption)
+          
+          // ✅ CRITICAL: Check if server says all_ready_for_next FIRST (before checking ref)
+          // This handles case where user is waiting and server says both are ready
+          const serverAllReadyForNext = response.data.all_ready_for_next || false;
+          
+          // ✅ CRITICAL: If server says all_ready_for_next, we MUST update question even if ref matches
+          // This ensures user who is waiting gets the new question immediately
+          if (serverAllReadyForNext && currentQuestionIdFromRef === newQuestionId && currentQuestionId !== newQuestionId) {
+            // Server says both ready, ref has new ID, but state doesn't - sync state immediately
+            logger.log('[FETCH STATUS] ✅ Server says all_ready_for_next - syncing state with ref:', {
+              refId: currentQuestionIdFromRef,
+              apiId: newQuestionId,
+              stateId: currentQuestionId
+            });
+            
+            setCurrentQuestion(response.data.current_question);
+            setCurrentQuestionOrder(newQuestionOrder);
+            setAllReadyForNext(false); // Reset after transition
+            
+            // Reset states for new question
+            setShowReveal(false);
+            setResponses([]);
+            setCorrectOptionId(null);
+            setSelectedOption(null);
+            selectedOptionRef.current = null;
+            setHasAnswered(false);
+            hasAnsweredRef.current = false;
+            setHasBothAnswered(false);
+            hasBothAnsweredFromAnswerRef.current = false;
+            setReadyForNext(false);
+            
+            return; // Don't process further - question updated
+          }
+          
+          // ✅ CRITICAL: Check if ref has different ID than API response
+          // If ref has the new ID, it means question was already updated by handleNext/WebSocket
+          // In this case, we should NOT update it again (to prevent resetting selectedOption)
+          if (currentQuestionIdFromRef !== null && currentQuestionIdFromRef !== undefined && currentQuestionIdFromRef === newQuestionId) {
+            // Ref already has the new ID - question was already updated by handleNext/WebSocket
+            // Don't update it again to prevent resetting selectedOption
+            logger.log('[FETCH STATUS] ⚠️ Skipping update - question ID in ref matches API (already updated):', {
+              refId: currentQuestionIdFromRef,
+              apiId: newQuestionId,
+              stateId: currentQuestionId
+            });
+            
+            // ✅ CRITICAL: Still update currentQuestion if state is different (sync state with ref)
+            if (currentQuestionId !== newQuestionId) {
+              logger.log('[FETCH STATUS] Syncing currentQuestion state with ref');
+              setCurrentQuestion(response.data.current_question);
+              setCurrentQuestionOrder(newQuestionOrder);
+            }
+            
+            return responseDataToReturn; // Don't process further - question was already updated
+          }
+          
+          // ✅ CRITICAL: Only check question ID to detect changes (NOT question_order)
+          // question_order may change due to API inconsistencies, but ID is the source of truth
+          // This prevents false positives where orderChanged is true but it's the same question
+          // ✅ CRITICAL: Don't consider it changed if currentQuestionId is null/undefined (first time loading)
+          // This prevents deleting selectedOption when question is first loaded
+          const stateIdChanged = currentQuestionId !== null && currentQuestionId !== undefined && currentQuestionId !== newQuestionId;
+          questionChanged = stateIdChanged; // ✅ ONLY use ID change, ignore order change
+          
+          // Log for debugging
+          if (currentQuestionOrder !== 0 && currentQuestionOrder !== newQuestionOrder && !questionChanged) {
+            logger.log('[FETCH STATUS] ⚠️ Question order changed but ID is same - ignoring order change to protect user selection:', {
+              currentOrder: currentQuestionOrder,
+              newOrder: newQuestionOrder,
+              questionId: newQuestionId,
+              hasSelectedOption: selectedOption !== null || selectedOptionRef.current !== null
+            });
+          }
           
           if (questionChanged) {
             // Question changed - reset ALL states completely (this is critical!)
@@ -700,6 +1291,32 @@ export default function MultiplayerGameScreen() {
             // 2. Reset showReveal to hide old reveal state (+1 نقطة)
             // 3. Reset responses to clear old data
             // 4. Then update question
+            // ✅ CRITICAL: Only reset selectedOption if question ID ACTUALLY changed
+            // Double-check: make sure question ID is different AND currentQuestionId is not null/undefined
+            // If currentQuestionId is null/undefined, this is first time loading, don't delete selectedOption
+            const actualQuestionIdChanged = currentQuestionId !== null && currentQuestionId !== undefined && currentQuestionId !== newQuestionId;
+            
+            // ✅ CRITICAL: Also check if ref has different ID (question was already updated)
+            // If ref has different ID, it means question was already updated by handleNext/WebSocket
+            // In this case, we should NOT update it again (to prevent resetting selectedOption)
+            if (currentQuestionIdFromRef !== null && currentQuestionIdFromRef !== undefined && currentQuestionIdFromRef !== newQuestionId) {
+              logger.log('[FETCH STATUS] ⚠️ Skipping update - question ID in ref differs from API (already updated by handleNext/WebSocket):', {
+                refId: currentQuestionIdFromRef,
+                apiId: newQuestionId,
+                stateId: currentQuestionId
+              });
+              return responseDataToReturn; // Don't process further - question was already updated
+            }
+            
+            if (actualQuestionIdChanged) {
+              logger.log('[FETCH STATUS] ✅ Question ID actually changed - resetting selectedOption:', {
+                oldId: currentQuestionId,
+                newId: newQuestionId
+              });
+              
+              // ✅ CRITICAL: Update ref FIRST to prevent future fetchStatus calls from resetting
+              currentQuestionIdRef.current = newQuestionId;
+              
             setReadyForNext(false);
             setAllReadyForNext(false);
             setShowReveal(false); // ✅ Reset showReveal FIRST to hide "+1 نقطة" from previous question
@@ -708,6 +1325,7 @@ export default function MultiplayerGameScreen() {
             setCurrentQuestion(response.data.current_question);
             setCurrentQuestionOrder(newQuestionOrder);
             setSelectedOption(null);
+              selectedOptionRef.current = null; // ✅ Also reset ref when question changes
             setHasAnswered(false);
             setHasBothAnswered(false);
             setIsSubmitting(false); // ✅ Reset submitting flag
@@ -716,66 +1334,248 @@ export default function MultiplayerGameScreen() {
             setRevealTimer(3);
             revealOpacity.value = 0;
             revealScale.value = 0.8;
+            } else {
+              // Question didn't actually change OR this is first time loading - don't reset selectedOption
+              logger.log('[FETCH STATUS] ⚠️ NOT resetting selectedOption - question ID same or first time loading:', {
+                currentQuestionId,
+                newQuestionId,
+                selectedOption,
+                selectedOptionRef: selectedOptionRef.current,
+                isFirstTime: currentQuestionId === null || currentQuestionId === undefined,
+                allReadyForNext
+              });
+              
+              // ✅ CRITICAL: Check if server says all_ready_for_next (from response, not state)
+              // This handles case where user is waiting and server says both are ready
+              const serverAllReadyForNext = response.data.all_ready_for_next || false;
+              if (serverAllReadyForNext) {
+                const newQuestionId = response.data.current_question?.id;
+                const currentQuestionId = currentQuestion?.id;
+                const refQuestionId = currentQuestionIdRef.current;
+                
+                // ✅ CRITICAL: Update if question ID changed OR if currentQuestion is undefined
+                // This handles case where ref has question ID but state doesn't
+                if (newQuestionId && (currentQuestionId === undefined || currentQuestionId !== newQuestionId)) {
+                  logger.log('[FETCH STATUS] ✅ Server says all_ready_for_next AND question changed/undefined - updating immediately:', {
+                    oldId: currentQuestionId,
+                    newId: newQuestionId,
+                    refId: refQuestionId,
+                    serverAllReady: serverAllReadyForNext,
+                    localAllReady: allReadyForNext
+                  });
+                  
+                  // Update question immediately
+                  currentQuestionIdRef.current = newQuestionId;
+                  
+                  // Only reset states if question actually changed (not just undefined)
+                  if (currentQuestionId !== undefined && currentQuestionId !== newQuestionId) {
+                    setShowReveal(false);
+                    setResponses([]);
+                    setCorrectOptionId(null);
+                    setSelectedOption(null);
+                    selectedOptionRef.current = null;
+                    setHasAnswered(false);
+                    hasAnsweredRef.current = false;
+                    setHasBothAnswered(false);
+                    hasBothAnsweredFromAnswerRef.current = false;
+                    setReadyForNext(false);
+                  }
+                  
+                  setAllReadyForNext(false); // Reset after transition
+                  
+                  if (responseData.current_question) {
+                    setCurrentQuestion(responseData.current_question);
+                    setCurrentQuestionOrder(responseData.current_question.question_order);
+                  }
+                  
+                  logger.log('[FETCH STATUS] ✅ Question updated successfully during all_ready_for_next transition');
+                  return responseDataToReturn; // Don't process further - question updated
+                } else {
+                  logger.log('[FETCH STATUS] ⚠️ Server says all_ready_for_next but question unchanged:', {
+                    currentQuestionId,
+                    newQuestionId,
+                    refId: refQuestionId
+                  });
+                }
+              }
+              
+              // ✅ CRITICAL: Also check local allReadyForNext state (for backward compatibility)
+              if (allReadyForNext) {
+                const newQuestionId = responseData.current_question?.id;
+                const currentQuestionId = currentQuestion?.id;
+                const refQuestionId = currentQuestionIdRef.current;
+                
+                // ✅ CRITICAL: Update if question ID changed OR if currentQuestion is undefined
+                // This handles case where ref has question ID but state doesn't
+                if (newQuestionId && (currentQuestionId === undefined || currentQuestionId !== newQuestionId)) {
+                  logger.log('[FETCH STATUS] ✅ Local allReadyForNext is true AND question changed/undefined - updating immediately:', {
+                    oldId: currentQuestionId,
+                    newId: newQuestionId,
+                    refId: refQuestionId
+                  });
+                  
+                  // Update question immediately
+                  currentQuestionIdRef.current = newQuestionId;
+                  
+                  // Only reset states if question actually changed (not just undefined)
+                  if (currentQuestionId !== undefined && currentQuestionId !== newQuestionId) {
+                    setShowReveal(false);
+                    setResponses([]);
+                    setCorrectOptionId(null);
+                    setSelectedOption(null);
+                    selectedOptionRef.current = null;
+                    setHasAnswered(false);
+                    hasAnsweredRef.current = false;
+                    setHasBothAnswered(false);
+                    hasBothAnsweredFromAnswerRef.current = false;
+                    setReadyForNext(false);
+                  }
+                  
+                  setAllReadyForNext(false); // Reset after transition
+                  
+                  setCurrentQuestion(responseData.current_question);
+                  setCurrentQuestionOrder(responseData.current_question.question_order);
+                  
+                  logger.log('[FETCH STATUS] ✅ Question updated successfully during allReadyForNext transition');
+                  return responseDataToReturn; // Don't process further - question updated
+                } else {
+                  logger.log('[FETCH STATUS] ⚠️ Skipping update - allReadyForNext is true but question unchanged (transition in progress)');
+                  return responseDataToReturn; // Don't process further - wait for transition to complete
+                }
+              }
+              
+              // ✅ CRITICAL: Still update currentQuestion if it's first time, but DON'T delete selectedOption
+              if (currentQuestionId === null || currentQuestionId === undefined) {
+                // First time loading - just set the question, don't reset anything
+                setCurrentQuestion(responseData.current_question);
+                setCurrentQuestionOrder(newQuestionOrder);
+              }
+            }
           } else if (currentQuestionOrder === 0) {
             // First question - just set it
-            // ✅ CRITICAL: Reset all states for first question to ensure clean state
-            // BUT: Don't reset showReveal if we're already showing reveal (user might be in reveal state)
+            // ✅ CRITICAL: ABSOLUTELY NEVER update currentQuestion if user has selected an option
+            // This is the KEY to preventing selectedOption from being deleted
+            // Even if it's the first question, if user has selected an option, DON'T touch currentQuestion
+            const hasSelectedOption = selectedOption !== null || selectedOptionRef.current !== null;
+            
+            if (hasSelectedOption) {
+              // ✅ CRITICAL: User has selected an option - DO NOT update currentQuestion AT ALL
+              // This prevents useEffect from firing and resetting selectedOption
+              logger.log('[FETCH STATUS] ⚠️ Skipping ALL updates for first question - user has selected option:', {
+                selectedOption,
+                selectedOptionRef: selectedOptionRef.current
+              });
+              // DO NOTHING - don't update currentQuestion, don't reset any states
+              // User's selection is protected
+            } else {
+              // User hasn't selected an option yet - safe to update currentQuestion
             if (!showReveal) {
               setReadyForNext(false);
               setAllReadyForNext(false);
               setShowReveal(false);
               setResponses([]);
               setCorrectOptionId(null);
-              setSelectedOption(null);
               setHasAnswered(false);
               setHasBothAnswered(false);
-              hasBothAnsweredFromAnswerRef.current = false; // ✅ Reset flag on question change
+                hasBothAnsweredFromAnswerRef.current = false;
             }
             setCurrentQuestion(response.data.current_question);
             setCurrentQuestionOrder(newQuestionOrder);
-          } else {
-            // Same question - just update if needed
-            // ✅ CRITICAL: Don't reset ANY states if question hasn't changed
-            // This prevents resetting selectedOption, hasAnswered, showReveal when polling
-            // Only update the question object if needed (for any data changes)
-            if (currentQuestion?.id !== response.data.current_question.id) {
-              setCurrentQuestion(response.data.current_question);
             }
+          } else {
+            // Same question - ABSOLUTELY DO NOT update currentQuestion object
+            // ✅ CRITICAL: Don't call setCurrentQuestion even if object reference is different
+            // This prevents useEffect from firing and potentially resetting selectedOption
+            // The question object reference may change from API, but if ID is same, we ignore it
             // DO NOT reset selectedOption, hasAnswered, showReveal, etc.
             // These states should only be reset when question actually changes
+            
+            // ✅ CRITICAL: If allReadyForNext is true, check if question actually changed
+            // If question changed, we MUST update it (both users are ready for next question)
+            if (allReadyForNext) {
+              const newQuestionId = response.data.current_question?.id;
+          const currentQuestionId = currentQuestion?.id;
+              
+              // ✅ CRITICAL: If question ID changed, we MUST update it (transition is happening)
+              if (newQuestionId && currentQuestionId !== newQuestionId) {
+                logger.log('[FETCH STATUS] ✅ allReadyForNext is true AND question changed - updating immediately:', {
+                  oldId: currentQuestionId,
+                  newId: newQuestionId
+                });
+                
+                // Update question immediately
+                currentQuestionIdRef.current = newQuestionId;
+            setShowReveal(false);
+            setResponses([]);
+            setCorrectOptionId(null);
+            setSelectedOption(null);
+                selectedOptionRef.current = null;
+            setHasAnswered(false);
+                hasAnsweredRef.current = false;
+            setHasBothAnswered(false);
+                hasBothAnsweredFromAnswerRef.current = false;
+                setReadyForNext(false);
+                setAllReadyForNext(false); // Reset after transition
+                
+                setCurrentQuestion(response.data.current_question);
+                if (responseData.current_question) {
+                  setCurrentQuestionOrder(responseData.current_question.question_order);
+                }
+                
+                logger.log('[FETCH STATUS] ✅ Question updated successfully during allReadyForNext transition');
+                return responseDataToReturn; // Don't process further - question updated
+              } else {
+                logger.log('[FETCH STATUS] ⚠️ Skipping update - allReadyForNext is true but question unchanged (waiting for transition)');
+                return responseDataToReturn; // Don't process further - wait for transition
+              }
+            }
+            
+            // ✅ CRITICAL: If selectedOption was cleared but ref still has value, restore it IMMEDIATELY
+            // This protects against any code that might have cleared it (even after hasAnswered becomes true)
+            // ✅ CRITICAL: This protection works ALWAYS - even if hasAnswered is true
+            // User needs to see their answer even after submission
+            if (selectedOption === null && selectedOptionRef.current !== null) {
+              logger.log('[FETCH STATUS] ⚠️ RESTORING selectedOption - it was cleared but ref has value!', {
+                selectedOption,
+                selectedOptionRef: selectedOptionRef.current,
+                hasAnswered,
+                showReveal,
+                currentQuestionId: currentQuestion?.id
+              });
+              setSelectedOption(selectedOptionRef.current);
+            }
+            
+            // ✅ CRITICAL: Also protect selectedOptionRef - if it was cleared but selectedOption has value, restore it
+            // This is a double protection - both state and ref must be protected
+            if (selectedOptionRef.current === null && selectedOption !== null) {
+              logger.log('[FETCH STATUS] ⚠️ RESTORING selectedOptionRef - it was cleared but selectedOption has value!', {
+                selectedOption,
+                selectedOptionRef: selectedOptionRef.current,
+                hasAnswered,
+                showReveal,
+                currentQuestionId: currentQuestion?.id
+              });
+              selectedOptionRef.current = selectedOption;
+            }
+            
+            logger.log('[FETCH STATUS] Same question - NOT updating currentQuestion object to protect user selection:', {
+              currentQuestionId: currentQuestion?.id,
+              newQuestionId: responseData.current_question?.id,
+              hasSelectedOption: selectedOption !== null || selectedOptionRef.current !== null,
+              selectedOption,
+              selectedOptionRef: selectedOptionRef.current
+            });
+            // ✅ ABSOLUTE PROTECTION: Never call setCurrentQuestion if question ID is same
+            // This is the key to preventing useEffect from firing and resetting selectedOption
           }
         } else if (!response.data.current_question && currentQuestion) {
           // Question disappeared (shouldn't happen, but handle it)
           // This might mean the session ended or question was removed
         }
         
-        // ✅ ADDITIONAL SAFETY CHECK: If readyForNext is true but we haven't answered and showReveal is true,
-        // and we're not waiting for the other participant, reset states
-        // This handles the case where states get stuck after question change
-        if (readyForNext && showReveal && !hasAnswered && response.data.current_question) {
-          const newQuestionId = response.data.current_question.id;
-          const currentQuestionId = currentQuestion?.id;
-          // If question ID changed but questionChanged wasn't detected, force reset
-          if (currentQuestionId !== null && currentQuestionId !== newQuestionId) {
-            logger.log('Force reset: Question ID changed but not detected');
-            setReadyForNext(false);
-            setShowReveal(false);
-            setResponses([]);
-            setCorrectOptionId(null);
-            setCurrentQuestion(response.data.current_question);
-            setCurrentQuestionOrder(response.data.current_question.question_order);
-            setSelectedOption(null);
-            setHasAnswered(false);
-            setHasBothAnswered(false);
-            setIsSubmitting(false); // ✅ Reset submitting flag
-            hasBothAnsweredFromAnswerRef.current = false; // ✅ Reset flag on question change
-            countdownStartedRef.current = false; // ✅ Reset countdown lock on question change
-            setRevealTimer(3);
-            revealOpacity.value = 0;
-            revealScale.value = 0.8;
-            questionChanged = true; // Mark as changed for later checks
-          }
-        }
+        // ✅ REMOVED: Force reset logic that was deleting selectedOption
+        // This logic was causing selectedOption to be deleted even when question didn't change
+        // selectedOption should ONLY be deleted when question actually changes (handled above)
 
         // IMPORTANT: Update readyForNext based on server state
         // ✅ CRITICAL FIX: If question changed, ALWAYS reset readyForNext regardless of server state
@@ -858,8 +1658,8 @@ export default function MultiplayerGameScreen() {
         // ✅ CRITICAL: Update hasBothAnswered - this MUST happen regardless of other locks
         // Even if user answered locally, we need to know when other user answered
         // This is essential for the countdown and reveal to work
-        // Only skip during countdown to prevent interference, but allow before/after
-        if (!questionChanged && !showReveal) {
+        // ✅ CRITICAL: NEVER update hasBothAnswered during countdown - let it complete
+        if (!questionChanged && !showReveal && !countdownStartedRef.current) {
           const serverHasBothAnswered = response.data.has_both_answered;
           
           // ✅ CRITICAL: If server says both answered, ALWAYS update to true IMMEDIATELY
@@ -887,24 +1687,28 @@ export default function MultiplayerGameScreen() {
               // Already true, just ensure ref is updated (countdown should have started)
               hasBothAnsweredRef.current = true;
             }
-          } else if (!serverHasBothAnswered && !hasBothAnswered && !hasAnswered) {
-            // User hasn't answered AND hasBothAnswered is false - sync with server
+          } else if (!serverHasBothAnswered && !hasBothAnswered && !hasAnswered && !hasSelectedLocally) {
+            // User hasn't answered AND hasn't selected an option AND hasBothAnswered is false - sync with server
+            // ✅ CRITICAL: Don't reset hasBothAnswered if user has selected an option (they're still thinking)
             setHasBothAnswered(false);
             hasBothAnsweredRef.current = false;
-          } else if (hasBothAnswered && !serverHasBothAnswered && !countdownStartedRef.current) {
-            // ✅ Only reset to false if countdown hasn't started
-            // If countdown started, keep it as true to prevent disruption
-            logger.log('[FETCH STATUS] Server says not both answered, but keeping true during countdown', {
+          } else if (hasBothAnswered && !serverHasBothAnswered) {
+            // ✅ CRITICAL: Once countdown starts, NEVER reset hasBothAnswered to false
+            // This ensures countdown completes regardless of server state
+            logger.log('[FETCH STATUS] Keeping hasBothAnswered as true - countdown must complete', {
               serverHasBothAnswered,
               localHasBothAnswered: hasBothAnswered,
               countdownStarted: countdownStartedRef.current
             });
+            // Don't update - keep hasBothAnswered as true
           }
         } else {
           if (countdownStartedRef.current) {
-            logger.log('[FETCH STATUS] Skipping hasBothAnswered update - countdown in progress');
+            logger.log('[FETCH STATUS] ⚠️ Skipping hasBothAnswered update - countdown in progress (must complete)');
           } else if (showReveal) {
             logger.log('[FETCH STATUS] Skipping hasBothAnswered update - reveal in progress');
+          } else if (questionChanged) {
+            logger.log('[FETCH STATUS] Skipping hasBothAnswered update - question changed');
           }
         }
         
@@ -915,33 +1719,10 @@ export default function MultiplayerGameScreen() {
         const allReady = allReadyFromParticipants || allReadyFromResponse;
         setAllReadyForNext(allReady);
         
-        // ✅ ADDITIONAL SAFETY CHECK: If readyForNext is true but we haven't answered and showReveal is true,
-        // and the question ID changed, force reset states
-        // This handles edge cases where questionChanged wasn't detected correctly
-        if (readyForNext && showReveal && !hasAnswered && response.data.current_question && currentQuestion) {
-          const newQuestionId = response.data.current_question.id;
-          const currentQuestionId = currentQuestion.id;
-          // If question ID changed but questionChanged wasn't detected, force reset
-          if (currentQuestionId !== newQuestionId && !questionChanged) {
-            logger.log('Force reset: Question ID changed but not detected by question_order');
-            setReadyForNext(false);
-            setAllReadyForNext(false);
-            setShowReveal(false);
-            setResponses([]);
-            setCorrectOptionId(null);
-            setCurrentQuestion(response.data.current_question);
-            setCurrentQuestionOrder(response.data.current_question.question_order);
-            setSelectedOption(null);
-            setHasAnswered(false);
-            setHasBothAnswered(false);
-            setIsSubmitting(false); // ✅ Reset submitting flag
-            hasBothAnsweredFromAnswerRef.current = false; // ✅ Reset flag on question change
-            countdownStartedRef.current = false; // ✅ Reset countdown lock on question change
-            setRevealTimer(3);
-            revealOpacity.value = 0;
-            revealScale.value = 0.8;
-          }
-        }
+        // ✅ REMOVED: Force reset logic that was deleting selectedOption
+        // This logic was causing selectedOption to be deleted even when question didn't change
+        // selectedOption should ONLY be deleted when question actually changes (handled above)
+        // If question ID changed, it will be detected by the main questionChanged logic above
 
         // Check if session completed or timeout
         if (response.data.status === 'completed') {
@@ -951,13 +1732,77 @@ export default function MultiplayerGameScreen() {
           });
         }
 
+        // ✅ CRITICAL: Check for participant timeout/disconnection
         if (response.data.participant_timeout_detected) {
+          logger.log('[Multiplayer] ⚠️ Participant timeout detected - navigating to disconnected screen');
+          console.log('[Multiplayer] ⚠️ Participant timeout detected - navigating to disconnected screen');
+          // ✅ CRITICAL: Stop all intervals and disconnect WebSocket before navigating
+          if (pollingInterval.current) {
+            clearInterval(pollingInterval.current);
+            pollingInterval.current = null;
+          }
+          websocket.disconnect();
           router.replace({
-            pathname: '/multiplayer/results',
-            params: { sessionId: sessionIdNum.toString(), reason: 'timeout' }
+            pathname: '/multiplayer/disconnected',
+            params: { 
+              reason: 'disconnected',
+              sessionId: sessionIdNum.toString() 
+            }
           });
+          return; // Stop processing further
         }
-      }
+        
+        // ✅ ADDITIONAL CHECK: Check if other participant status is 'disconnected'
+        const otherParticipant = response.data.participants?.find((p: Participant) => p.user_id !== currentUserId);
+        if (otherParticipant) {
+          // Check status
+          if (otherParticipant.status === 'disconnected') {
+            logger.log('[Multiplayer] ⚠️ Other participant status is disconnected - navigating to disconnected screen');
+            console.log('[Multiplayer] ⚠️ Other participant status is disconnected - navigating to disconnected screen');
+            // ✅ CRITICAL: Stop all intervals and disconnect WebSocket before navigating
+            if (pollingInterval.current) {
+              clearInterval(pollingInterval.current);
+              pollingInterval.current = null;
+            }
+            websocket.disconnect();
+            router.replace({
+              pathname: '/multiplayer/disconnected',
+              params: { 
+                reason: 'disconnected',
+                sessionId: sessionIdNum.toString() 
+              }
+            });
+            return; // Stop processing further
+          }
+          
+          // ✅ ADDITIONAL CHECK: Check inactivity_seconds if available (for debugging and faster detection)
+          const inactivitySeconds = (otherParticipant as any).inactivity_seconds;
+          if (inactivitySeconds !== null && inactivitySeconds !== undefined && inactivitySeconds > 20) {
+            logger.log('[Multiplayer] ⚠️ Other participant inactive for too long - navigating to disconnected screen', {
+              inactivitySeconds,
+              threshold: 20,
+            });
+            console.log('[Multiplayer] ⚠️ Other participant inactive for too long - navigating to disconnected screen', {
+              inactivitySeconds,
+              threshold: 20,
+            });
+            // ✅ CRITICAL: Stop all intervals and disconnect WebSocket before navigating
+            if (pollingInterval.current) {
+              clearInterval(pollingInterval.current);
+              pollingInterval.current = null;
+            }
+            websocket.disconnect();
+            router.replace({
+              pathname: '/multiplayer/disconnected',
+              params: { 
+                reason: 'disconnected',
+                sessionId: sessionIdNum.toString() 
+              }
+            });
+            return; // Stop processing further
+          }
+        }
+      } // End of if (response && response.ok && response.data)
     } catch (error: any) {
       logger.error('Error fetching status:', error);
       // ✅ Don't reset states on network error - keep current state
@@ -1049,7 +1894,7 @@ export default function MultiplayerGameScreen() {
   };
 
   // ✅ NEW: Handle option selection (temporary - user can change)
-  const handleOptionSelect = (optionId: number) => {
+  const handleOptionSelect = useCallback(async (optionId: number) => {
     if (!currentQuestion) return;
     
     // ✅ Allow selection only if user hasn't submitted final answer
@@ -1062,6 +1907,16 @@ export default function MultiplayerGameScreen() {
     setSelectedOption(optionId);
     selectedOptionRef.current = optionId;
     
+    // ✅ CRITICAL: Update activity in backend to prevent false timeout detection
+    // This ensures that if user is selecting options (even before submitting), they're considered active
+    try {
+      await api.post(API_ENDPOINTS.MULTIPLAYER_ACTIVITY(sessionIdNum));
+      logger.log('[OPTION SELECT] Activity updated in backend');
+    } catch (error) {
+      // Silent fail - don't block user interaction if activity update fails
+      logger.warn('[OPTION SELECT] Failed to update activity:', error);
+    }
+    
     // ✅ CRITICAL: Stop polling immediately when user selects an option
     // This prevents fetchStatus from interfering with the selection
     if (pollingInterval.current) {
@@ -1072,7 +1927,7 @@ export default function MultiplayerGameScreen() {
     
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     logger.log('[OPTION SELECT] User selected option:', optionId);
-  };
+  }, [currentQuestion, hasAnswered, showReveal, sessionIdNum]);
 
   // ✅ MODIFIED: Submit final answer (called from "إرسال الإجابة" button)
   const handleAnswer = async () => {
@@ -1114,6 +1969,13 @@ export default function MultiplayerGameScreen() {
         data: {
           is_correct: boolean;
           has_both_answered: boolean;
+          question_changed?: boolean;
+          current_question?: {
+            id: number;
+            stem: string;
+            options: Array<{ id: number; option_label: string; content: string; option_order: number }>;
+            question_order: number;
+          };
         };
       }>(API_ENDPOINTS.MULTIPLAYER_ANSWER(sessionIdNum), {
         question_id: currentQuestion.id,
@@ -1123,6 +1985,37 @@ export default function MultiplayerGameScreen() {
       logger.log('[HANDLE ANSWER] Submitted answer:', optionId);
 
       if (response && response.ok && response.data) {
+        // ✅ Check if question changed (race condition - user's device hasn't updated yet)
+        if (response.data.question_changed && response.data.current_question) {
+          logger.log('[HANDLE ANSWER] ⚠️ Question changed - updating to current question:', response.data.current_question);
+          // Question changed - update to current question silently (no error message)
+          // This handles race conditions where user's device hasn't updated to new question yet
+          setCurrentQuestion({
+            id: response.data.current_question.id,
+            stem: response.data.current_question.stem,
+            options: response.data.current_question.options,
+            question_order: response.data.current_question.question_order,
+            total_questions: currentQuestion?.total_questions || 3, // Fallback to 3 if currentQuestion is null
+          } as Question);
+          setCurrentQuestionOrder(response.data.current_question.question_order);
+          // Reset state for new question
+          setSelectedOption(null);
+          selectedOptionRef.current = null;
+          setHasAnswered(false);
+          hasAnsweredRef.current = false;
+          setIsSubmitting(false);
+          isSubmittingRef.current = false;
+          setShowReveal(false);
+          setHasBothAnswered(false);
+          setResponses([]);
+          setCorrectOptionId(null);
+          setReadyForNext(false);
+          setAllReadyForNext(false);
+          // Don't show error - just update question silently
+          // User can now answer the new question
+          return;
+        }
+        
         logger.log('[HANDLE ANSWER] Response received', {
           has_both_answered: response.data.has_both_answered,
           showReveal,
@@ -1188,18 +2081,18 @@ export default function MultiplayerGameScreen() {
         // ✅ Only start polling if WebSocket is NOT connected (fallback only)
         if (!isWebSocketConnectedRef.current && !pollingInterval.current) {
           logger.log('[HANDLE ANSWER] WebSocket not connected - starting fallback polling');
-          pollingInterval.current = setInterval(() => {
-            // ✅ Only poll if not in countdown or reveal
-            if (countdownStartedRef.current || showRevealRef.current) {
-              return;
-            }
+        pollingInterval.current = setInterval(() => {
+          // ✅ Only poll if not in countdown or reveal
+          if (countdownStartedRef.current || showRevealRef.current) {
+            return;
+          }
             // ✅ Stop polling if WebSocket reconnects
             if (isWebSocketConnectedRef.current) {
               clearInterval(pollingInterval.current!);
               pollingInterval.current = null;
-              return;
-            }
-            fetchStatus();
+            return;
+          }
+          fetchStatus();
           }, 5000); // Longer interval for fallback polling (5 seconds)
         }
       }
@@ -1321,25 +2214,115 @@ export default function MultiplayerGameScreen() {
           // ✅ CRITICAL: Reset ALL states FIRST in correct order
           // This ensures both users can answer the new question immediately
           // Order matters: reset states BEFORE updating question to prevent UI glitches
+          const newQuestionId = response.data.current_question.id;
+          logger.log('[HANDLE NEXT] ✅ Moving to next question immediately:', {
+            oldId: currentQuestion?.id,
+            newId: newQuestionId
+          });
+          
+          // ✅ CRITICAL: Update question ID ref FIRST to prevent fetchStatus from resetting
+          currentQuestionIdRef.current = newQuestionId;
+          
+          // Reset states
           setReadyForNext(false);
           setAllReadyForNext(true);
           setShowReveal(false); // ✅ Reset showReveal FIRST to hide old reveal state
           setResponses([]); // ✅ Reset responses to clear old data
           setCorrectOptionId(null);
-          setCurrentQuestion(response.data.current_question);
-          setCurrentQuestionOrder(response.data.current_question.question_order);
           setSelectedOption(null);
+          selectedOptionRef.current = null;
           setHasAnswered(false);
+          hasAnsweredRef.current = false;
           setHasBothAnswered(false);
+          hasBothAnsweredFromAnswerRef.current = false;
           hasBothAnsweredFromAnswerRef.current = false; // ✅ Reset flag on question change
           setRevealTimer(3);
           revealOpacity.value = 0;
           revealScale.value = 0.8;
+          
+          // ✅ CRITICAL: Update question IMMEDIATELY to prevent fetchStatus from resetting it
+          // This ensures the question is updated before any other code can interfere
+          setCurrentQuestion(response.data.current_question);
+          setCurrentQuestionOrder(response.data.current_question.question_order);
+          
+          logger.log('[HANDLE NEXT] ✅ Question updated successfully:', {
+            questionId: newQuestionId,
+            questionOrder: response.data.current_question.question_order
+          });
         } else if (response.data.status === 'waiting_for_both') {
           // Waiting for other participant
           setAllReadyForNext(false);
           // Keep readyForNext as true to show waiting state
-          // The useEffect will handle polling
+          // ✅ CRITICAL: WebSocket will send all_ready_for_next event when other participant clicks "next"
+          // The WebSocket callback will handle the transition immediately
+          logger.log('[HANDLE NEXT] Waiting for other participant - WebSocket will notify when ready');
+          
+          // ✅ CRITICAL: Fetch status immediately to check if both are already ready
+          // This handles race condition where other participant clicked "next" before this user
+          fetchStatus(true).then((response) => {
+            // ✅ CRITICAL: Check response data directly (not state) to see if both are ready
+            // This ensures we catch the transition even if state hasn't updated yet
+            if (response?.data?.all_ready_for_next && response?.data?.current_question) {
+              const newQuestionId = response.data.current_question.id;
+              const currentQuestionId = currentQuestion?.id;
+              
+              // If question changed, update immediately
+              if (currentQuestionId !== newQuestionId) {
+                logger.log('[HANDLE NEXT] ✅ Both ready detected in response - updating question immediately:', {
+                  oldId: currentQuestionId,
+                  newId: newQuestionId
+                });
+                
+                // Update question immediately
+                currentQuestionIdRef.current = newQuestionId;
+                setShowReveal(false);
+                setResponses([]);
+                setCorrectOptionId(null);
+                setSelectedOption(null);
+                selectedOptionRef.current = null;
+                setHasAnswered(false);
+                hasAnsweredRef.current = false;
+                setHasBothAnswered(false);
+                hasBothAnsweredFromAnswerRef.current = false;
+                setReadyForNext(false);
+                setAllReadyForNext(false);
+                
+                setCurrentQuestion(response.data.current_question);
+                setCurrentQuestionOrder(response.data.current_question.question_order);
+                
+                logger.log('[HANDLE NEXT] ✅ Question updated successfully from fetchStatus response');
+              }
+            }
+          }).catch((error) => {
+            logger.error('[HANDLE NEXT] Error fetching status while waiting:', error);
+          });
+          
+          // ✅ CRITICAL: Only use polling as fallback if WebSocket is NOT connected
+          // If WebSocket is connected, rely on it completely (no polling needed)
+          if (!isWebSocketConnectedRef.current && !websocket.isConnected()) {
+            logger.log('[HANDLE NEXT] WebSocket not connected - using fallback polling');
+            const waitingInterval = setInterval(() => {
+              // Check if allReadyForNext became true (set by WebSocket or fetchStatus)
+              if (allReadyForNext) {
+                logger.log('[HANDLE NEXT] All ready detected - stopping polling');
+                clearInterval(waitingInterval);
+                return;
+              }
+              
+              // Fetch status to check if both are ready now
+              // fetchStatus will update allReadyForNext and currentQuestion if both are ready
+              fetchStatus(true).catch((error) => {
+                logger.error('[HANDLE NEXT] Error polling while waiting:', error);
+              });
+            }, 2000); // Poll every 2 seconds (reduced from 500ms to improve performance)
+            
+            // Cleanup interval after 10 seconds (shouldn't take that long)
+            setTimeout(() => {
+              clearInterval(waitingInterval);
+            }, 10000);
+          } else {
+            logger.log('[HANDLE NEXT] WebSocket connected - relying on WebSocket events only');
+          }
         }
       }
     } catch (error: any) {
@@ -1374,55 +2357,41 @@ export default function MultiplayerGameScreen() {
     <GradientBackground colors={colors.gradient}>
       <StatusBar barStyle="light-content" />
       <View style={styles.container}>
-        {/* Header */}
-        <View style={styles.header}>
-          <View style={styles.progressContainer}>
-            <Text style={styles.progressText}>
-              سؤال {currentQuestion.question_order} من {currentQuestion.total_questions}
+        <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+          {/* Question Card - محسّن */}
+          <Animated.View 
+            entering={FadeInUp.duration(600).springify()} 
+            style={styles.questionCard}
+          >
+            <View style={styles.questionHeader}>
+              <View style={[styles.questionIconContainer, { backgroundColor: `${colors.primary}20` }]}>
+                <MaterialIcons name="help-outline" size={24} color={colors.primary} />
+              </View>
+              <Text style={styles.questionNumber}>
+                سؤال {currentQuestion.question_order}
             </Text>
-            <View style={styles.progressBar}>
-              <View
+            </View>
+            <Text style={styles.questionText}>{currentQuestion.stem}</Text>
+            <View style={styles.questionFooter}>
+              <View style={styles.questionProgress}>
+                <Animated.View 
+                  entering={FadeIn.duration(300)}
                 style={[
-                  styles.progressFill,
+                    styles.questionProgressBar,
                   {
                     width: `${(currentQuestion.question_order / currentQuestion.total_questions) * 100}%`,
                     backgroundColor: colors.primary,
-                  },
+                    }
                 ]}
               />
             </View>
-          </View>
-
-          {/* Scores */}
-          <View style={styles.scoresContainer}>
-            {participants.map((participant, index) => {
-              const isMe = participant.user_id === currentUserId;
-              return (
-                <View
-                  key={participant.user_id}
-                  style={[
-                    styles.scoreBadge,
-                    {
-                      backgroundColor: isMe ? '#60A5FA' : '#FB923C',
-                    },
-                  ]}
-                >
-                  <Text style={styles.scoreText}>
-                    {participant.name}: {participant.score}
+              <Text style={styles.questionProgressText}>
+                {currentQuestion.question_order} / {currentQuestion.total_questions}
                   </Text>
                 </View>
-              );
-            })}
-          </View>
-        </View>
-
-        <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
-          {/* Question */}
-          <Animated.View entering={FadeInUp.duration(600)} style={styles.questionContainer}>
-            <Text style={styles.questionText}>{currentQuestion.stem}</Text>
           </Animated.View>
 
-          {/* Options */}
+          {/* Options - محسّنة */}
           <View style={styles.optionsContainer}>
             {currentQuestion.options.map((option, index) => {
               // ✅ Use BOTH state and ref to determine selection (ref is more reliable)
@@ -1433,78 +2402,112 @@ export default function MultiplayerGameScreen() {
               const isMyCorrect = isMyChoice && isCorrect;
               const isMyWrong = isMyChoice && !isCorrect && showReveal;
 
-              let optionColor = 'rgba(255, 255, 255, 0.1)';
-              let borderColor = 'rgba(255, 255, 255, 0.2)';
+              // تحديد الألوان والـ styles حسب الحالة
+              let cardStyleArray: any[] = [styles.optionCard];
+              let iconBg = '#4B5563';
+              let iconTextStyle = styles.optionIcon;
 
               if (showReveal) {
                 if (isCorrect) {
-                  optionColor = 'rgba(16, 185, 129, 0.3)';
-                  borderColor = '#10B981';
+                  cardStyleArray = [styles.optionCard, styles.optionCardCorrect];
+                  iconBg = '#10B981';
+                  iconTextStyle = styles.optionIconCorrect;
                 } else if (isMyChoice || isOtherChoice) {
-                  optionColor = 'rgba(239, 68, 68, 0.3)';
-                  borderColor = '#EF4444';
+                  cardStyleArray = [styles.optionCard, styles.optionCardWrong];
+                  iconBg = '#EF4444';
+                  iconTextStyle = styles.optionIconWrong;
                 }
               } else if (hasBothAnswered) {
-                // ✅ During countdown, show selected option (even if reveal not shown yet)
+                // ✅ During countdown, show selected option
                 if (isSelected && !showReveal) {
-                  // ✅ Show selected option during countdown
-                  optionColor = `${colors.primary}30`;
-                  borderColor = colors.primary;
+                  cardStyleArray = [styles.optionCard, styles.optionCardSelected];
+                  iconBg = colors.primary;
+                  iconTextStyle = styles.optionIconSelected;
                 } else if (isMyChoice) {
-                  optionColor = 'rgba(96, 165, 250, 0.3)';
-                  borderColor = '#60A5FA';
+                  cardStyleArray = [styles.optionCard, styles.optionCardMyChoice];
+                  iconBg = '#60A5FA';
                 } else if (isOtherChoice) {
-                  optionColor = 'rgba(251, 146, 60, 0.3)';
-                  borderColor = '#FB923C';
+                  cardStyleArray = [styles.optionCard, styles.optionCardOtherChoice];
+                  iconBg = '#FB923C';
                 }
               } else if (isSelected) {
                 // ✅ Show selected option before countdown
-                optionColor = `${colors.primary}30`;
-                borderColor = colors.primary;
+                cardStyleArray = [styles.optionCard, styles.optionCardSelected];
+                iconBg = colors.primary;
+                iconTextStyle = styles.optionIconSelected;
               }
 
               return (
                 <Animated.View
                   key={option.id}
-                  entering={SlideInRight.duration(400).delay(index * 100)}
+                  entering={SlideInRight.duration(400).delay(index * 100).springify()}
+                    style={[
+                    ...cardStyleArray,
+                    isSelected && !showReveal && styles.optionCardPulse
+                  ]}
                 >
                   <TouchableOpacity
-                    style={[
-                      styles.optionButton,
-                      {
-                        backgroundColor: optionColor,
-                        borderColor: borderColor,
-                        borderWidth: 2,
-                      },
-                    ]}
+                    style={styles.optionButton}
                     onPress={() => handleOptionSelect(option.id)}
                     disabled={hasAnswered || hasAnsweredRef.current || showReveal || readyForNext}
-                    activeOpacity={0.7}
+                    activeOpacity={0.8}
                   >
-                    <View style={styles.optionContent}>
-                      <Text style={styles.optionLabel}>
+                    {/* Option Icon Circle */}
+                    <Animated.View 
+                      style={[
+                        styles.optionIconContainer, 
+                        { backgroundColor: iconBg }
+                      ]}
+                    >
+                      <Text style={iconTextStyle}>
                         {option.option_label || String.fromCharCode(65 + index)}
                       </Text>
+                    </Animated.View>
+
+                    {/* Option Content */}
+                    <View style={styles.optionContent}>
                       <Text style={styles.optionText}>{option.content}</Text>
                     </View>
+
+                    {/* Status Icons */}
+                    <View style={styles.optionStatus}>
                     {isMyChoice && (
-                      <View style={[styles.choiceBadge, { backgroundColor: '#60A5FA' }]}>
+                        <Animated.View 
+                          entering={ZoomIn.duration(300).springify()}
+                          style={[styles.choiceBadge, styles.choiceBadgeMe]}
+                        >
+                          <MaterialIcons name="person" size={16} color="#FFFFFF" />
                         <Text style={styles.choiceBadgeText}>أنت</Text>
-                      </View>
+                        </Animated.View>
                     )}
                     {isOtherChoice && (
-                      <View style={[styles.choiceBadge, { backgroundColor: '#FB923C' }]}>
+                        <Animated.View 
+                          entering={ZoomIn.duration(300).springify()}
+                          style={[styles.choiceBadge, styles.choiceBadgeOther]}
+                        >
+                          <MaterialIcons name="person-outline" size={16} color="#FFFFFF" />
                         <Text style={styles.choiceBadgeText}>
                           {otherParticipant?.name || 'صديقك'}
                         </Text>
-                      </View>
+                        </Animated.View>
                     )}
                     {isCorrect && showReveal && (
-                      <MaterialIcons name="check-circle" size={24} color="#10B981" />
+                        <Animated.View 
+                          entering={ZoomIn.duration(300).springify()}
+                          style={styles.correctIcon}
+                        >
+                          <MaterialIcons name="check-circle" size={28} color="#10B981" />
+                        </Animated.View>
                     )}
                     {isMyWrong && (
-                      <MaterialIcons name="cancel" size={24} color="#EF4444" />
-                    )}
+                        <Animated.View 
+                          entering={ZoomIn.duration(300)}
+                          style={styles.wrongIcon}
+                        >
+                          <MaterialIcons name="cancel" size={28} color="#EF4444" />
+                        </Animated.View>
+                      )}
+                    </View>
                   </TouchableOpacity>
                 </Animated.View>
               );
@@ -1518,14 +2521,45 @@ export default function MultiplayerGameScreen() {
             </Animated.View>
           )}
 
-          {/* Reveal Result */}
+          {/* Reveal Result - محسّن */}
           {showReveal && (
-            <Animated.View style={[styles.revealContainer, revealAnimatedStyle]}>
+            <Animated.View 
+              entering={ZoomIn.duration(400).springify()}
+              style={styles.revealContainer}
+            >
               {myResponse?.is_correct && (
-                <View style={styles.resultBadge}>
-                  <MaterialIcons name="check-circle" size={32} color="#10B981" />
-                  <Text style={styles.resultText}>+1 نقطة!</Text>
+                <Animated.View 
+                  entering={FadeInUp.duration(500).springify()}
+                  style={styles.resultBadge}
+                >
+                  <Animated.View 
+                    entering={ZoomIn.duration(300).springify()}
+                    style={styles.resultIconContainer}
+                  >
+                    <MaterialIcons name="check-circle" size={40} color="#10B981" />
+                  </Animated.View>
+                  <View style={styles.resultTextContainer}>
+                    <Text style={styles.resultText}>إجابة صحيحة!</Text>
+                    <Text style={styles.resultPoints}>+1 نقطة</Text>
                 </View>
+                </Animated.View>
+              )}
+              {myResponse && !myResponse.is_correct && (
+                <Animated.View 
+                  entering={FadeInUp.duration(500).springify()}
+                  style={styles.resultBadgeWrong}
+                >
+                  <Animated.View 
+                    entering={ZoomIn.duration(300).springify()}
+                    style={styles.resultIconContainerWrong}
+                  >
+                    <MaterialIcons name="cancel" size={40} color="#EF4444" />
+                  </Animated.View>
+                  <View style={styles.resultTextContainer}>
+                    <Text style={styles.resultTextWrong}>إجابة خاطئة</Text>
+                    <Text style={styles.resultPointsWrong}>حاول مرة أخرى</Text>
+                  </View>
+                </Animated.View>
               )}
             </Animated.View>
           )}
@@ -1607,102 +2641,199 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  header: {
-    padding: 20,
-    paddingTop: 60,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
-  },
-  progressContainer: {
-    marginBottom: 16,
-  },
-  progressText: {
-    fontSize: 14,
-    color: 'rgba(255, 255, 255, 0.8)',
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  progressBar: {
-    height: 6,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    borderRadius: 3,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    borderRadius: 3,
-  },
-  scoresContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 12,
-  },
-  scoreBadge: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-  },
-  scoreText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
     padding: 20,
+    paddingTop: 60, // ✅ إضافة padding top للتعويض عن إزالة header
     paddingBottom: 100,
   },
-  questionContainer: {
-    marginBottom: 32,
+  // Question Card - محسّن
+  questionCard: {
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderRadius: 20,
+    padding: 20,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  questionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+    gap: 12,
+  },
+  questionIconContainer: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  questionNumber: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: 'rgba(255, 255, 255, 0.7)',
   },
   questionText: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '600',
     color: '#FFFFFF',
-    lineHeight: 32,
+    lineHeight: 28,
     textAlign: 'right',
+    marginBottom: 12,
   },
-  optionsContainer: {
+  questionFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 12,
+  },
+  questionProgress: {
+    flex: 1,
+    height: 4,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  questionProgressBar: {
+    height: '100%',
+    borderRadius: 2,
+  },
+  questionProgressText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: 'rgba(255, 255, 255, 0.6)',
+  },
+  // Options - محسّنة
+  optionsContainer: {
+    gap: 16,
+  },
+  optionCard: {
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
+    overflow: 'hidden',
+  },
+  optionCardSelected: {
+    backgroundColor: 'rgba(212, 175, 55, 0.15)',
+    borderColor: '#D4AF37',
+    borderWidth: 2,
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  optionCardMyChoice: {
+    backgroundColor: 'rgba(96, 165, 250, 0.15)',
+    borderColor: '#60A5FA',
+    borderWidth: 2,
+  },
+  optionCardOtherChoice: {
+    backgroundColor: 'rgba(251, 146, 60, 0.15)',
+    borderColor: '#FB923C',
+    borderWidth: 2,
+  },
+  optionCardCorrect: {
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    borderColor: '#10B981',
+    borderWidth: 2,
+  },
+  optionCardWrong: {
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+    borderColor: '#EF4444',
+    borderWidth: 2,
+  },
+  optionCardPulse: {
+    // Pulse animation سيتم إضافتها عبر animated style
   },
   optionButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
-    borderRadius: 12,
-    minHeight: 60,
+    padding: 18,
+    gap: 16,
+  },
+  optionIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  optionIcon: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  optionIconSelected: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  optionIconCorrect: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  optionIconWrong: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
   optionContent: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  optionLabel: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    width: 32,
-    textAlign: 'center',
   },
   optionText: {
-    flex: 1,
-    fontSize: 16,
+    fontSize: 17,
     color: '#FFFFFF',
     textAlign: 'right',
+    lineHeight: 24,
+    fontWeight: '500',
+  },
+  optionStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   choiceBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 12,
-    marginLeft: 8,
+    gap: 4,
+  },
+  choiceBadgeMe: {
+    backgroundColor: '#60A5FA',
+  },
+  choiceBadgeOther: {
+    backgroundColor: '#FB923C',
   },
   choiceBadgeText: {
     fontSize: 12,
     fontWeight: '600',
     color: '#FFFFFF',
+  },
+  correctIcon: {
+    // Icon styling
+  },
+  wrongIcon: {
+    // Icon styling
   },
   countdownContainer: {
     alignItems: 'center',
@@ -1720,15 +2851,73 @@ const styles = StyleSheet.create({
   resultBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
-    borderRadius: 16,
+    padding: 20,
+    borderRadius: 20,
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    borderWidth: 2,
+    borderColor: '#10B981',
+    gap: 16,
+    shadowColor: '#10B981',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  resultBadgeWrong: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 20,
+    borderRadius: 20,
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+    borderWidth: 2,
+    borderColor: '#EF4444',
+    gap: 16,
+    shadowColor: '#EF4444',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  resultIconContainer: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     backgroundColor: 'rgba(16, 185, 129, 0.2)',
-    gap: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  resultIconContainerWrong: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: 'rgba(239, 68, 68, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  resultTextContainer: {
+    flex: 1,
   },
   resultText: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '700',
     color: '#10B981',
+    marginBottom: 4,
+  },
+  resultTextWrong: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#EF4444',
+    marginBottom: 4,
+  },
+  resultPoints: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: 'rgba(16, 185, 129, 0.8)',
+  },
+  resultPointsWrong: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: 'rgba(239, 68, 68, 0.8)',
   },
   bottomContainer: {
     padding: 20,

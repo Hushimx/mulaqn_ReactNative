@@ -5,21 +5,28 @@ import { buttonGradient } from '@/constants/Colors';
 
 interface GradientButtonProps {
   onPress: () => void;
-  text: string;
+  text?: string;
+  title?: string; // Alias for text
   disabled?: boolean;
   loading?: boolean;
   style?: ViewStyle;
   textStyle?: TextStyle;
+  colors?: string[]; // Custom gradient colors
 }
 
 export function GradientButton({ 
   onPress, 
-  text, 
+  text,
+  title,
   disabled = false, 
   loading = false,
   style,
   textStyle,
+  colors,
 }: GradientButtonProps) {
+  const displayText = title || text || '';
+  const gradientColors = colors || [buttonGradient.start, buttonGradient.end];
+  
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -28,7 +35,7 @@ export function GradientButton({
       style={[styles.container, style]}
     >
       <LinearGradient
-        colors={[buttonGradient.start, buttonGradient.end]}
+        colors={gradientColors}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 0 }}
         style={styles.gradient}
@@ -36,7 +43,7 @@ export function GradientButton({
         {loading ? (
           <ActivityIndicator color="#FFFFFF" size="small" />
         ) : (
-          <Text style={[styles.text, textStyle]}>{text}</Text>
+          <Text style={[styles.text, textStyle]}>{displayText}</Text>
         )}
       </LinearGradient>
     </TouchableOpacity>

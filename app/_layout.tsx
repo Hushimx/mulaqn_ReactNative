@@ -12,6 +12,7 @@ import { LanguageProvider, useLanguage } from '@/contexts/LanguageContext';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { TrackProvider } from '@/contexts/TrackContext';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { isFirstTime } from '@/utils/firstTimeUser';
 import '@/i18n/config';
 
 // إخفاء جميع الـ warnings والأخطاء من الواجهة
@@ -41,18 +42,30 @@ function RootLayoutNav() {
 
     const inAuthGroup = segments[0] === '(tabs)';
     const inAuthPages = segments[0] === 'login' || segments[0] === 'register' || segments[0] === 'otp-login' || segments[0] === 'register-otp' || segments[0] === 'register-success';
+    const inPublicPages = segments[0] === 'welcome' || segments[0] === 'track-selection';
+    const isInitialLoad = segments.length === 0 || !segments[0];
 
     if (!isAuthenticated) {
       // المستخدم غير مسجل دخول
       if (inAuthGroup) {
         // يحاول الوصول لصفحة محمية
         router.replace('/login');
+      } else if (isInitialLoad || (!inAuthPages && !inPublicPages)) {
+        // عند بدء التطبيق أو في صفحة غير معروفة
+        // تحقق من أول مرة
+        isFirstTime().then((firstTime) => {
+          if (firstTime) {
+            router.replace('/welcome');
+          } else {
+            router.replace('/login');
+          }
+        });
       }
-      // إذا كان في صفحات تسجيل الدخول، اتركه
+      // إذا كان في صفحات تسجيل الدخول أو public pages، اتركه
     } else {
       // المستخدم مسجل دخول
-      if (inAuthPages) {
-        // يحاول الوصول لصفحة تسجيل دخول أو تسجيل
+      if (inAuthPages || inPublicPages) {
+        // يحاول الوصول لصفحة تسجيل دخول أو public page
         router.replace('/(tabs)');
       }
     }
@@ -61,15 +74,26 @@ function RootLayoutNav() {
   return (
     <Stack>
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      <Stack.Screen name="welcome" options={{ headerShown: false }} />
+      <Stack.Screen 
+        name="track-selection" 
+        options={{ 
+          headerShown: false,
+          animationTypeForReplace: 'push',
+          animation: 'slide_from_left', // Slide from left (comes from right in RTL)
+        }} 
+      />
       <Stack.Screen name="login" options={{ headerShown: false }} />
       <Stack.Screen name="register" options={{ headerShown: false }} />
       <Stack.Screen name="register-otp" options={{ headerShown: false }} />
       <Stack.Screen name="register-success" options={{ headerShown: false }} />
       <Stack.Screen name="otp-login" options={{ headerShown: false }} />
+      <Stack.Screen name="profile/edit" options={{ headerShown: false }} />
       <Stack.Screen name="subscription" options={{ headerShown: false }} />
       <Stack.Screen name="assessments" options={{ headerShown: false }} />
       <Stack.Screen name="multiplayer" options={{ headerShown: false }} />
       <Stack.Screen name="payment" options={{ headerShown: false }} />
+      <Stack.Screen name="lessons" options={{ headerShown: false }} />
       <Stack.Screen name="+not-found" />
     </Stack>
   );

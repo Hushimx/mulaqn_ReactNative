@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   StyleSheet,
   SafeAreaView,
@@ -38,6 +38,7 @@ interface Lesson {
   difficulty?: string;
   lesson_order: number;
   questions_count?: number;
+  answered_questions_count?: number;
   category?: {
     id: number;
     name: string;
@@ -63,6 +64,11 @@ interface Track {
   code: string;
   name: string;
   description?: string;
+  icon?: string;
+  icon_emoji?: string;
+  primary_color?: string;
+  bg_color?: string;
+  gradient_colors?: string[];
 }
 
 export default function LessonsListScreen() {
@@ -84,15 +90,31 @@ export default function LessonsListScreen() {
   const [savingNote, setSavingNote] = useState(false);
   const [togglingPin, setTogglingPin] = useState<number | null>(null);
 
+  // Track if page has been loaded before (for animations)
+  const hasBeenLoaded = useRef(false);
+  const isFirstMount = useRef(true);
+
   const trackId = parseInt(id || '0');
-  const colors = getTrackColors(trackId);
+  // Use track object if available (from API), otherwise fallback to trackId
+  // This ensures colors update when track is loaded from API
+  const colors = useMemo(() => getTrackColors(track || trackId), [track, trackId]);
 
   useEffect(() => {
     if (id) {
       setCurrentTrack(trackId);
       checkSubscription();
+      // إعادة تعيين عند تغيير track
+      hasBeenLoaded.current = false;
+      isFirstMount.current = true;
     }
   }, [id]);
+
+  // Update track context when track data is loaded from API
+  useEffect(() => {
+    if (track) {
+      setCurrentTrack(trackId, track);
+    }
+  }, [track, trackId, setCurrentTrack]);
 
   useEffect(() => {
     if (hasSubscription !== null && hasSubscription) {
@@ -105,7 +127,20 @@ export default function LessonsListScreen() {
   useFocusEffect(
     React.useCallback(() => {
       if (hasSubscription !== null && hasSubscription) {
-        fetchLessons();
+        // مسح cache للدروس فقط (وليس subscription cache)
+        api.clearCache(API_ENDPOINTS.LESSONS(trackId));
+        
+        // إذا كانت الصفحة محملة مسبقاً (رجوع من درس) - لا نعيد التحميل مع loading
+        if (hasBeenLoaded.current) {
+          // فقط نحدث البيانات بدون loading state
+          fetchLessons(false);
+          isFirstMount.current = false;
+          return;
+        }
+        
+        // أول مرة - نحمّل البيانات مع loading
+        hasBeenLoaded.current = true;
+        fetchLessons(true);
       }
     }, [hasSubscription, trackId])
   );
@@ -142,9 +177,11 @@ export default function LessonsListScreen() {
     }
   };
 
-  const fetchLessons = async () => {
+  const fetchLessons = async (showLoading = true) => {
     try {
-      setLoading(true);
+      if (showLoading) {
+        setLoading(true);
+      }
       setError(null);
 
       const response = await api.get<{ ok: boolean; data: Lesson[] }>(
@@ -152,17 +189,45 @@ export default function LessonsListScreen() {
       );
 
       if (response && response.ok && response.data) {
-        // Log for debugging
-        const bookmarkedLessons = response.data.filter(l => l.bookmark?.bookmarked);
-        logger.log(`[Lessons] Loaded ${response.data.length} lessons, ${bookmarkedLessons.length} bookmarked`);
+        // Log for debugging - فحص جميع الدروس مع bookmark data
+        logger.log(`[Lessons] Raw API response: ${response.data.length} lessons`);
+        response.data.forEach((l: Lesson) => {
+          if (l.bookmark) {
+            logger.log(`[Lessons] Lesson ${l.id}: bookmark=${JSON.stringify(l.bookmark)}`);
+          }
+        });
         
-        // ترتيب الدروس: المثبتة/المحفوظة أولاً، ثم حسب الترتيب
-        // المثبت = محفوظ (نفس التأثيرات)
+        // Log for debugging
+        const pinnedLessons = response.data.filter(l => l.bookmark?.pinned === true);
+        const bookmarkedLessons = response.data.filter(l => l.bookmark?.bookmarked === true);
+        logger.log(`[Lessons] Loaded ${response.data.length} lessons, ${pinnedLessons.length} pinned, ${bookmarkedLessons.length} bookmarked`);
+        
+        // Log pinned lessons for debugging
+        pinnedLessons.forEach(l => {
+          logger.log(`[Lessons] Pinned lesson: ${l.id} - ${l.title}, pinned: ${l.bookmark?.pinned}, type: ${typeof l.bookmark?.pinned}`);
+        });
+        
+        // Log lessons with bookmark but not pinned
+        const bookmarkedButNotPinned = response.data.filter(l => l.bookmark?.bookmarked && !l.bookmark?.pinned);
+        if (bookmarkedButNotPinned.length > 0) {
+          logger.log(`[Lessons] Bookmarked but not pinned: ${bookmarkedButNotPinned.length} lessons`);
+          bookmarkedButNotPinned.forEach(l => {
+            logger.log(`[Lessons] Bookmarked lesson: ${l.id} - ${l.title}, pinned: ${l.bookmark?.pinned}`);
+          });
+        }
+        
+        // ترتيب الدروس: المثبتة أولاً، ثم حسب الترتيب
         const sortedLessons = [...response.data].sort((a, b) => {
-          const aPinned = (a.bookmark?.pinned || a.bookmark?.bookmarked) ? 0 : 1;
-          const bPinned = (b.bookmark?.pinned || b.bookmark?.bookmarked) ? 0 : 1;
+          // التأكد من أن pinned هو boolean
+          const aPinned = a.bookmark?.pinned === true ? 0 : 1;
+          const bPinned = b.bookmark?.pinned === true ? 0 : 1;
           if (aPinned !== bPinned) return aPinned - bPinned;
           return a.lesson_order - b.lesson_order;
+        });
+        
+        logger.log(`[Lessons] After sorting, first ${Math.min(5, sortedLessons.length)} lessons:`);
+        sortedLessons.slice(0, 5).forEach((l, idx) => {
+          logger.log(`[Lessons] ${idx + 1}. Lesson ${l.id} - ${l.title}, pinned: ${l.bookmark?.pinned}`);
         });
         
         setLessons(sortedLessons);
@@ -185,40 +250,74 @@ export default function LessonsListScreen() {
 
   const handleTogglePin = useCallback(async (lesson: Lesson, e: any) => {
     e.stopPropagation();
+    e.preventDefault();
+    
     try {
       setTogglingPin(lesson.id);
-      const response = await api.post<{ ok: boolean; data: { pinned: boolean } }>(
+      const currentPinned = lesson.bookmark?.pinned || false;
+      logger.log(`[TogglePin] Toggling pin for lesson ${lesson.id}, current pinned: ${currentPinned}`);
+      
+      const response = await api.post<{ ok: boolean; data: { pinned: boolean; bookmarked?: boolean } }>(
         API_ENDPOINTS.LESSON_PIN(lesson.id)
       );
       
+      logger.log(`[TogglePin] Full response:`, JSON.stringify(response, null, 2));
+      
       if (response && response.ok && response.data) {
-        setLessons(prevLessons =>
-          prevLessons.map(l =>
-            l.id === lesson.id
-              ? {
-                  ...l,
-                  bookmark: {
-                    ...l.bookmark,
-                    pinned: response.data.pinned,
-                    bookmarked: response.data.bookmarked ?? true,
-                  } as Lesson['bookmark'],
-                }
-              : l
-          ).sort((a, b) => {
-            // ترتيب: المثبتة/المحفوظة أولاً (نفس التأثيرات)
-            const aPinned = (a.bookmark?.pinned || a.bookmark?.bookmarked) ? 0 : 1;
-            const bPinned = (b.bookmark?.pinned || b.bookmark?.bookmarked) ? 0 : 1;
+        const newPinned = Boolean(response.data.pinned);
+        const newBookmarked = response.data.bookmarked !== undefined ? Boolean(response.data.bookmarked) : true;
+        
+        logger.log(`[TogglePin] Updating lesson ${lesson.id}: pinned=${newPinned}, bookmarked=${newBookmarked}`);
+        
+        setLessons(prevLessons => {
+          const updated = prevLessons.map(l => {
+            if (l.id === lesson.id) {
+              // إنشاء bookmark جديد إذا لم يكن موجوداً
+              const existingBookmark = l.bookmark || { bookmarked: false, pinned: false, note: null };
+              const updatedLesson = {
+                ...l,
+                bookmark: {
+                  bookmarked: newBookmarked,
+                  pinned: newPinned,
+                  note: existingBookmark.note || null,
+                } as Lesson['bookmark'],
+              };
+              logger.log(`[TogglePin] Updated lesson ${l.id}:`, JSON.stringify(updatedLesson.bookmark, null, 2));
+              return updatedLesson;
+            }
+            return l;
+          });
+          
+          // ترتيب: المثبتة فقط أولاً (pinned فقط، بدون bookmarked)
+          const sorted = updated.sort((a, b) => {
+            const aPinned = a.bookmark?.pinned ? 0 : 1;
+            const bPinned = b.bookmark?.pinned ? 0 : 1;
             if (aPinned !== bPinned) return aPinned - bPinned;
             return a.lesson_order - b.lesson_order;
-          })
-        );
+          });
+          
+          logger.log(`[TogglePin] Sorted lessons, first lesson pinned: ${sorted[0]?.bookmark?.pinned}`);
+          return sorted;
+        });
+        
+        // إعادة جلب الدروس من API لضمان المزامنة مع الموقع
+        // مسح cache أولاً لضمان جلب البيانات الجديدة
+        api.clearCache();
+        setTimeout(() => {
+          fetchLessons(false);
+        }, 500);
+      } else {
+        logger.error('[TogglePin] Invalid response structure:', response);
+        Alert.alert('خطأ', `استجابة غير صحيحة من الخادم: ${JSON.stringify(response)}`);
       }
-    } catch (err) {
-      logger.error('Error toggling pin:', err);
+    } catch (err: any) {
+      logger.error('[TogglePin] Error:', err);
+      const errorMessage = err?.message || 'فشل في تحديث حالة التثبيت';
+      Alert.alert('خطأ', errorMessage);
     } finally {
       setTogglingPin(null);
     }
-  }, []);
+  }, [trackId]);
 
   const handleOpenNoteModal = useCallback((lesson: Lesson, e: any) => {
     e.stopPropagation();
@@ -420,14 +519,21 @@ export default function LessonsListScreen() {
           {/* Track Header */}
           {track && (
             <Animated.View
-              entering={FadeInDown.duration(600)}
+              entering={isFirstMount.current ? FadeInDown.duration(600) : undefined}
               style={styles.trackHeader}
             >
               <Animated.Text
-                entering={ZoomIn.duration(800).delay(200)}
+                entering={isFirstMount.current ? ZoomIn.duration(800).delay(200) : undefined}
                 style={styles.trackEmoji}
               >
-                🤖
+                {track?.icon_emoji || track?.icon || (() => {
+                  switch (track?.id) {
+                    case 1: return '🧠';
+                    case 2: return '📐';
+                    case 3: return '🌐';
+                    default: return '📚';
+                  }
+                })()}
               </Animated.Text>
               <Text style={[styles.trackTitle, { textAlign }]}>{track.name}</Text>
               <Text style={[styles.trackSubtitle, { textAlign }]}>استكشف جميع الدروس المتاحة</Text>
@@ -436,7 +542,7 @@ export default function LessonsListScreen() {
 
           {/* Lessons Count */}
           <Animated.View
-            entering={FadeInUp.duration(600).delay(300)}
+            entering={isFirstMount.current ? FadeInUp.duration(600).delay(300) : undefined}
             style={[styles.countContainer, { flexDirection }]}
           >
             <MaterialIcons name="menu-book" size={20} color={colors.primary} />
@@ -450,12 +556,12 @@ export default function LessonsListScreen() {
             {lessons.map((lesson, index) => (
               <Animated.View
                 key={lesson.id}
-                entering={FadeInUp.duration(500).delay(400 + index * 100)}
+                entering={isFirstMount.current ? FadeInUp.duration(500).delay(400 + index * 100) : undefined}
               >
                 <TouchableOpacity
                   style={[
                     styles.lessonCard,
-                    (lesson.bookmark?.pinned || lesson.bookmark?.bookmarked) ? styles.lessonCardPinned : { borderColor: `${colors.primary}40` },
+                    lesson.bookmark?.pinned ? styles.lessonCardPinned : { borderColor: `${colors.primary}40` },
                   ]}
                   onPress={() => handleLessonPress(lesson)}
                   activeOpacity={0.8}
@@ -494,12 +600,12 @@ export default function LessonsListScreen() {
                         style={styles.actionButton}
                         onPress={(e) => handleTogglePin(lesson, e)}
                         disabled={togglingPin === lesson.id}
-                        accessibilityLabel={(lesson.bookmark?.pinned || lesson.bookmark?.bookmarked) ? "إلغاء تثبيت الدرس" : "تثبيت الدرس"}
+                        accessibilityLabel={lesson.bookmark?.pinned ? "إلغاء تثبيت الدرس" : "تثبيت الدرس"}
                       >
                         <MaterialIcons
-                          name={(lesson.bookmark?.pinned || lesson.bookmark?.bookmarked) ? "bookmark" : "bookmark-border"}
+                          name={lesson.bookmark?.pinned ? "bookmark" : "bookmark-border"}
                           size={24}
-                          color={(lesson.bookmark?.pinned || lesson.bookmark?.bookmarked) ? '#D4AF37' : 'rgba(255, 255, 255, 0.6)'}
+                          color={lesson.bookmark?.pinned ? '#D4AF37' : 'rgba(255, 255, 255, 0.6)'}
                         />
                       </TouchableOpacity>
                       <TouchableOpacity
@@ -517,7 +623,7 @@ export default function LessonsListScreen() {
 
                   <Text style={[styles.lessonTitle, { textAlign }]}>{lesson.title}</Text>
 
-                  {lesson.summary && (
+                  {lesson.summary && lesson.summary.trim() && (
                     <Text style={[styles.lessonSummary, { textAlign }]} numberOfLines={2}>
                       {lesson.summary}
                     </Text>
@@ -536,6 +642,7 @@ export default function LessonsListScreen() {
                   {/* Performance Level */}
                   {(() => {
                     const performance = getPerformanceLevel(lesson);
+                    if (!performance || !performance.label) return null;
                     return (
                       <View style={[styles.performanceContainer, { flexDirection }]}>
                         <Text style={[styles.performanceLabel, { color: performance.color }]}>
@@ -550,9 +657,9 @@ export default function LessonsListScreen() {
                     );
                   })()}
 
-                  <View style={[styles.lessonFooter, { flexDirection }]}>
-                    {lesson.category && (
-                      <View style={[styles.categoryContainer, { flexDirection }]}>
+                  <View style={[styles.lessonFooter, { flexDirection: flexDirection || 'row' }]}>
+                    {lesson.category && lesson.category.name ? (
+                      <View style={[styles.categoryContainer, { flexDirection: flexDirection || 'row' }]}>
                         <MaterialIcons
                           name="label"
                           size={16}
@@ -560,18 +667,20 @@ export default function LessonsListScreen() {
                         />
                         <Text style={styles.categoryText}>{lesson.category.name}</Text>
                       </View>
-                    )}
+                    ) : null}
 
-                    <View style={[styles.questionsContainer, { flexDirection }]}>
-                      <MaterialIcons
-                        name="help-outline"
-                        size={16}
-                        color={colors.primary}
-                      />
-                      <Text style={[styles.questionsText, { color: colors.primary }]}>
-                        {lesson.questions_count || 0} سؤال
-                      </Text>
-                    </View>
+                    {lesson.answered_questions_count && lesson.answered_questions_count > 0 ? (
+                      <View style={[styles.questionsContainer, { flexDirection: flexDirection || 'row' }]}>
+                        <MaterialIcons
+                          name="check-circle"
+                          size={16}
+                          color={colors.primary}
+                        />
+                        <Text style={[styles.questionsText, { color: colors.primary }]}>
+                          جاوبت على {lesson.answered_questions_count} سؤال
+                        </Text>
+                      </View>
+                    ) : null}
                   </View>
 
                   <View style={[styles.lessonArrow, { [isRTL ? 'right' : 'left']: 20 }]}>
@@ -883,7 +992,14 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   actionButton: {
-    padding: 6,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   noteContainer: {
     flexDirection: 'row',

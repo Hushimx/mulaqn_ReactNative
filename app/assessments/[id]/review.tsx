@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   StyleSheet,
   SafeAreaView,
@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   StatusBar,
   Image,
+  Dimensions,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -38,6 +39,9 @@ interface QuestionReview {
   question_id: number;
   stem: string;
   media_url?: string;
+  has_image?: boolean;
+  image_path?: string;
+  image_url?: string;
   explanation?: string;
   options: QuestionOption[];
   selected_option_id?: number;
@@ -64,10 +68,91 @@ export default function AssessmentReviewScreen() {
   const [review, setReview] = useState<AssessmentReview | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedQuestionIndex, setSelectedQuestionIndex] = useState(0);
+  const navigatorScrollViewRef = useRef<ScrollView>(null);
+  const itemLayoutsRef = useRef<Map<number, { x: number; width: number }>>(new Map());
 
   useEffect(() => {
     fetchReview();
+    // Reset to first question when review is loaded
+    setSelectedQuestionIndex(0);
   }, [attemptId]);
+
+  // Scroll to first question when review is loaded (in RTL, first question is on the right)
+  useEffect(() => {
+    if (review && review.questions.length > 0 && navigatorScrollViewRef.current) {
+      // Wait for layout to be measured, then scroll to first question (index 0)
+      // Use the same logic as the scroll-to-current-question effect
+      const scrollToFirst = () => {
+        const screenWidth = Dimensions.get('window').width;
+        const itemLayout = itemLayoutsRef.current.get(0); // First question (index 0)
+        
+        if (itemLayout) {
+          // Use measured position for first question
+          const centerOffset = screenWidth / 2 - itemLayout.width / 2;
+          const scrollPosition = itemLayout.x - centerOffset;
+          
+          navigatorScrollViewRef.current?.scrollTo({
+            x: Math.max(0, scrollPosition),
+            animated: false,
+          });
+        } else {
+          // Fallback: estimate position for first question
+          const itemWidth = 60; // Estimated width
+          const gap = 12;
+          const firstQuestionPosition = 0; // First question starts at position 0
+          const centerOffset = screenWidth / 2 - itemWidth / 2;
+          const scrollPosition = firstQuestionPosition - centerOffset;
+          
+          navigatorScrollViewRef.current?.scrollTo({
+            x: Math.max(0, scrollPosition),
+            animated: false,
+          });
+        }
+      };
+      
+      // Try multiple times to ensure layout is measured
+      setTimeout(scrollToFirst, 100);
+      setTimeout(scrollToFirst, 300);
+      setTimeout(scrollToFirst, 500);
+    }
+  }, [review]);
+
+  // Scroll to current question in navigator
+  useEffect(() => {
+    if (review && review.questions.length > 0 && navigatorScrollViewRef.current) {
+      const screenWidth = Dimensions.get('window').width;
+      
+      // Try to use measured layout if available
+      const itemLayout = itemLayoutsRef.current.get(selectedQuestionIndex);
+      
+      if (itemLayout) {
+        // Use measured position
+        const centerOffset = screenWidth / 2 - itemLayout.width / 2;
+        const scrollPosition = itemLayout.x - centerOffset;
+        
+        setTimeout(() => {
+          navigatorScrollViewRef.current?.scrollTo({
+            x: Math.max(0, scrollPosition),
+            animated: true,
+          });
+        }, 100);
+      } else {
+        // Fallback to estimated position
+        const itemWidth = 50;
+        const gap = 12;
+        const itemPosition = selectedQuestionIndex * (itemWidth + gap);
+        const centerOffset = screenWidth / 2 - itemWidth / 2;
+        const scrollPosition = itemPosition - centerOffset;
+        
+        setTimeout(() => {
+          navigatorScrollViewRef.current?.scrollTo({
+            x: Math.max(0, scrollPosition),
+            animated: true,
+          });
+        }, 150);
+      }
+    }
+  }, [selectedQuestionIndex, review]);
 
   const fetchReview = async () => {
     try {
@@ -132,40 +217,79 @@ export default function AssessmentReviewScreen() {
         </View>
 
         {/* Question Navigator */}
-        <View style={styles.navigatorContainer}>
+        <View style={styles.navigatorContainer} collapsable={false}>
           <ScrollView
+            ref={navigatorScrollViewRef}
             horizontal
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.navigatorContent}
+            contentContainerStyle={[styles.navigatorContent, { paddingTop: 8, paddingBottom: 8 }]}
+            style={{ overflow: 'visible' }}
+            onContentSizeChange={() => {
+              // When content size changes, scroll to first question
+              if (review && review.questions.length > 0 && selectedQuestionIndex === 0) {
+                setTimeout(() => {
+                  const screenWidth = Dimensions.get('window').width;
+                  const itemLayout = itemLayoutsRef.current.get(0);
+                  
+                  if (itemLayout) {
+                    const centerOffset = screenWidth / 2 - itemLayout.width / 2;
+                    const scrollPosition = itemLayout.x - centerOffset;
+                    navigatorScrollViewRef.current?.scrollTo({
+                      x: Math.max(0, scrollPosition),
+                      animated: false,
+                    });
+                  }
+                }, 100);
+              }
+            }}
           >
             {review.questions.map((q, index) => {
               const isActive = index === selectedQuestionIndex;
-              const bgColor = q.is_correct ? '#10B981' : '#EF4444';
+              const borderColor = q.is_correct ? '#10B981' : '#EF4444';
+              const innerBgColor = q.is_correct ? 'rgba(16, 185, 129, 0.25)' : 'rgba(239, 68, 68, 0.25)';
+              const questionNumber = index + 1;
               
               return (
-                <View key={q.question_id} style={styles.navItemWrapper}>
+                <View 
+                  key={q.question_id} 
+                  style={styles.navItemWrapper}
+                  onLayout={(event) => {
+                    const { x, width } = event.nativeEvent.layout;
+                    itemLayoutsRef.current.set(index, { x, width });
+                  }}
+                >
                   <TouchableOpacity
                     style={[
                       styles.navItem,
                       { 
-                        backgroundColor: bgColor,
-                        opacity: isActive ? 1 : 0.8,
-                        borderColor: isActive ? '#FFFFFF' : 'transparent',
-                        borderWidth: isActive ? 2.5 : 0,
-                        transform: isActive ? [{ scale: 1.05 }] : [{ scale: 1 }],
+                        backgroundColor: innerBgColor,
+                        borderColor: borderColor,
+                        borderWidth: 2.5,
+                        transform: isActive ? [{ scale: 1.08 }] : [{ scale: 1 }],
+                        shadowColor: borderColor,
+                        shadowOpacity: isActive ? 0.7 : 0.2,
+                        shadowRadius: isActive ? 15 : 4,
+                        shadowOffset: { width: 0, height: isActive ? 6 : 2 },
+                        elevation: isActive ? 12 : 4,
+                        marginTop: isActive ? 8 : 0,
+                        marginBottom: isActive ? 8 : 0,
                       }
                     ]}
                     onPress={() => setSelectedQuestionIndex(index)}
                   >
-                    <Text style={[styles.navItemText, { fontWeight: isActive ? '700' : '600' }]}>{index + 1}</Text>
+                    <Text style={[styles.navItemText, { 
+                      fontWeight: isActive ? '700' : '600',
+                      color: borderColor,
+                      zIndex: 1,
+                    }]}>{questionNumber}</Text>
                     {q.is_correct ? (
-                      <MaterialIcons name="check" size={16} color="#FFFFFF" />
+                      <MaterialIcons name="check" size={16} color={borderColor} style={{ zIndex: 1 }} />
                     ) : (
-                      <MaterialIcons name="close" size={16} color="#FFFFFF" />
+                      <MaterialIcons name="close" size={16} color={borderColor} style={{ zIndex: 1 }} />
                     )}
                   </TouchableOpacity>
                   {q.time_spent_sec !== undefined && q.time_spent_sec > 0 && (
-                    <View style={[styles.navTimeLabel, { borderColor: isActive ? trackColors.primary : 'rgba(255, 255, 255, 0.2)' }]}>
+                    <View style={[styles.navTimeLabel, { borderColor: isActive ? '#D4AF37' : 'rgba(255, 255, 255, 0.2)' }]}>
                       <Text style={styles.navTimeText}>{formatTime(q.time_spent_sec)}</Text>
                     </View>
                   )}
@@ -227,13 +351,19 @@ export default function AssessmentReviewScreen() {
               {currentQuestion.stem}
             </Text>
             
-            {currentQuestion.media_url && (
+            {(currentQuestion.has_image && currentQuestion.image_url) ? (
+              <Image
+                source={{ uri: currentQuestion.image_url }}
+                style={styles.questionImage}
+                resizeMode="contain"
+              />
+            ) : currentQuestion.media_url ? (
               <Image
                 source={{ uri: currentQuestion.media_url }}
                 style={styles.questionImage}
                 resizeMode="contain"
               />
-            )}
+            ) : null}
           </View>
 
           {/* Options Review */}
@@ -248,48 +378,36 @@ export default function AssessmentReviewScreen() {
                 // Get option text
                 const optionText = option.content || option.option_text || option.label || 'خيار غير متوفر';
                 
-                // Debug log
-                console.log(`Option ${index + 1}:`, {
-                  content: option.content,
-                  option_text: option.option_text,
-                  label: option.label,
-                  text: optionText,
-                  id: option.id,
-                  isCorrect: option.is_correct,
-                  isUserAnswer,
-                  isCorrectAnswer
-                });
-                
                 let borderColor = 'rgba(255, 255, 255, 0.4)';
                 let bgColor = 'rgba(50, 50, 70, 0.4)';
-                let iconName: any = null;
-                let iconColor = '#FFFFFF';
                 
                 if (isCorrectAnswer) {
                   borderColor = '#10B981';
-                  bgColor = 'rgba(16, 185, 129, 0.25)';
-                  iconName = 'check-circle';
-                  iconColor = '#10B981';
+                  bgColor = 'rgba(16, 185, 129, 0.2)';
                 } else if (isUserAnswer && !isCorrectAnswer) {
                   borderColor = '#EF4444';
-                  bgColor = 'rgba(239, 68, 68, 0.25)';
-                  iconName = 'cancel';
-                  iconColor = '#EF4444';
+                  bgColor = 'rgba(239, 68, 68, 0.2)';
                 }
                 
                 return (
                   <View
                     key={option.id}
-                      style={[
-                      styles.optionCard,
-                      { 
-                        borderColor,
-                        backgroundColor: bgColor,
-                      },
+                    style={[
+                      styles.optionCardWrapper,
+                      isUserAnswer && styles.optionCardSelected,
                     ]}
                   >
+                    <View
+                      style={[
+                        styles.optionCard,
+                        { 
+                          borderColor,
+                          backgroundColor: bgColor,
+                        },
+                      ]}
+                    >
                     <View style={[styles.optionContent, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-                      <View style={{ flex: 1, flexDirection: isRTL ? 'row-reverse' : 'row', alignItems: 'flex-start', gap: 8 }}>
+                      <View style={{ flex: 1, flexDirection: isRTL ? 'row-reverse' : 'row', alignItems: 'center', gap: 8 }}>
                         {option.label && (
                           <Text style={[styles.optionLabel, { color: '#D4AF37' }]}>
                             {option.label}.
@@ -307,55 +425,84 @@ export default function AssessmentReviewScreen() {
                         </Text>
                       </View>
                       
-                      {iconName && (
-                        <MaterialIcons name={iconName} size={26} color={iconColor} />
-                      )}
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                        {isUserAnswer && isCorrectAnswer && (
+                          <View style={[styles.answerBadge, { 
+                            backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                            borderColor: '#10B981',
+                          }]}>
+                            <MaterialIcons name="check-circle" size={16} color="#10B981" />
+                            <Text style={[styles.answerBadgeText, { color: '#10B981' }]}>
+                              إجابتك
+                            </Text>
+                          </View>
+                        )}
+                        {isUserAnswer && !isCorrectAnswer && (
+                          <View style={[styles.answerBadge, { 
+                            backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                            borderColor: '#EF4444',
+                          }]}>
+                            <MaterialIcons name="close" size={16} color="#EF4444" />
+                            <Text style={[styles.answerBadgeText, { color: '#EF4444' }]}>
+                              إجابتك
+                            </Text>
+                          </View>
+                        )}
+                        {!isUserAnswer && isCorrectAnswer && (
+                          <View style={[styles.answerBadge, { 
+                            backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                            borderColor: '#10B981',
+                          }]}>
+                            <MaterialIcons name="check-circle" size={16} color="#10B981" />
+                            <Text style={[styles.answerBadgeText, { color: '#10B981' }]}>
+                              الإجابة الصحيحة
+                            </Text>
+                          </View>
+                        )}
+                      </View>
                     </View>
-                    
-                    {isUserAnswer && !isCorrectAnswer && (
-                      <View style={[styles.label, { backgroundColor: '#EF444420' }]}>
-                        <Text style={[styles.labelText, { color: '#EF4444' }]}>
-                          إجابتك
-                        </Text>
-                      </View>
-                    )}
-                    
-                    {isCorrectAnswer && (
-                      <View style={[styles.label, { backgroundColor: 'rgba(16, 185, 129, 0.2)' }]}>
-                        <Text style={[styles.labelText, { color: '#10B981' }]}>
-                          الإجابة الصحيحة
-                        </Text>
-                      </View>
-                    )}
                   </View>
+                </View>
                 );
               })}
           </View>
 
-          {/* Selection Reason - لماذا اخترنا هذا السؤال */}
-          {currentQuestion.selection_reason && currentQuestion.selection_reason.reason_text && (
-            <View style={[styles.selectionReasonCard, { borderColor: `${trackColors.primary}40`, backgroundColor: `${trackColors.primary}10` }]}>
-              <View style={[styles.selectionReasonHeader, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-                <MaterialIcons name="lightbulb-outline" size={22} color={trackColors.primary} />
-                <Text style={[styles.selectionReasonTitle, { color: trackColors.primary }]}>{t('assessments.review.selectionReason.title')}</Text>
+          {/* Explanation - شرح الإجابة أولاً */}
+          {currentQuestion.explanation && (
+            <View style={[styles.explanationCard, { borderColor: `${trackColors.primary}40` }]}>
+              <View style={[styles.explanationHeader, { flexDirection: isRTL ? 'row' : 'row' }]}>
+                <MaterialIcons name="lightbulb" size={20} color={trackColors.primary} />
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.explanationTitle, { textAlign: textAlign }]}>شرح الإجابة</Text>
+                </View>
               </View>
-              
-              <Text style={[styles.selectionReasonText]}>
-                {currentQuestion.selection_reason.reason_text}
-              </Text>
+              <View style={{ width: '100%' }}>
+                <Text style={[styles.explanationText, { 
+                  textAlign: textAlign,
+                }]}>
+                  {currentQuestion.explanation}
+                </Text>
+              </View>
             </View>
           )}
 
-          {/* Explanation */}
-          {currentQuestion.explanation && (
-            <View style={[styles.explanationCard, { borderColor: `${trackColors.primary}40` }]}>
-              <View style={[styles.explanationHeader, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-                <MaterialIcons name="lightbulb" size={20} color={trackColors.primary} />
-                <Text style={styles.explanationTitle}>شرح الإجابة</Text>
+          {/* Selection Reason - لماذا اخترنا هذا السؤال */}
+          {currentQuestion.selection_reason && currentQuestion.selection_reason.reason_text && (
+            <View style={[styles.selectionReasonCard, { borderColor: `${trackColors.primary}40`, backgroundColor: `${trackColors.primary}10` }]}>
+              <View style={[styles.selectionReasonHeader, { flexDirection: isRTL ? 'row' : 'row' }]}>
+                <MaterialIcons name="lightbulb-outline" size={22} color={trackColors.primary} />
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.selectionReasonTitle, { color: trackColors.primary, textAlign: textAlign }]}>{t('assessments.review.selectionReason.title')}</Text>
+                </View>
               </View>
-              <Text style={[styles.explanationText]}>
-                {currentQuestion.explanation}
-              </Text>
+              
+              <View style={{ width: '100%' }}>
+                <Text style={[styles.selectionReasonText, { 
+                  textAlign: textAlign,
+                }]}>
+                  {currentQuestion.selection_reason.reason_text}
+                </Text>
+              </View>
             </View>
           )}
 
@@ -374,7 +521,7 @@ export default function AssessmentReviewScreen() {
               disabled={selectedQuestionIndex === 0}
             >
               <MaterialIcons 
-                name={isRTL ? "arrow-forward" : "arrow-back"} 
+                name={isRTL ? "arrow-back" : "arrow-forward"} 
                 size={20} 
                 color="#FFFFFF" 
               />
@@ -395,7 +542,7 @@ export default function AssessmentReviewScreen() {
             >
               <Text style={styles.navButtonText}>التالي</Text>
               <MaterialIcons 
-                name={isRTL ? "arrow-back" : "arrow-forward"} 
+                name={isRTL ? "arrow-forward" : "arrow-back"} 
                 size={20} 
                 color="#FFFFFF" 
               />
@@ -412,6 +559,7 @@ export default function AssessmentReviewScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
+    overflow: 'visible',
   },
   loadingContainer: {
     flex: 1,
@@ -424,6 +572,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 20,
     paddingVertical: 16,
+    overflow: 'visible',
   },
   headerButton: {
     width: 40,
@@ -437,17 +586,31 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   navigatorContainer: {
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
+    paddingTop: 16,
+    paddingBottom: 16,
+    marginTop: 12,
+    marginBottom: 4,
+    position: 'relative',
+    overflow: 'visible',
+    zIndex: 1,
+  },
+  navigatorBorder: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
   },
   navigatorContent: {
+    flexDirection: 'row',
     paddingHorizontal: 20,
     gap: 12,
   },
   navItemWrapper: {
     alignItems: 'center',
     gap: 4,
+    overflow: 'visible',
   },
   navItem: {
     flexDirection: 'row',
@@ -458,9 +621,11 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     minWidth: 60,
     justifyContent: 'center',
+    borderWidth: 2.5,
+    position: 'relative',
+    overflow: 'visible',
   },
   navItemText: {
-    color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '600',
   },
@@ -563,11 +728,25 @@ const styles = StyleSheet.create({
     gap: 12,
     marginBottom: 20,
   },
+  optionCardWrapper: {
+    borderRadius: 14,
+  },
+  optionCardSelected: {
+    borderWidth: 2,
+    borderColor: 'rgba(212, 175, 55, 0.5)',
+    borderRadius: 14,
+    padding: 0,
+  },
   optionCard: {
-    borderRadius: 12,
+    borderRadius: 14,
     padding: 18,
     borderWidth: 2,
     minHeight: 70,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    elevation: 3,
   },
   optionContent: {
     flexDirection: 'row',
@@ -597,6 +776,29 @@ const styles = StyleSheet.create({
   labelText: {
     fontSize: 11,
     fontWeight: '600',
+  },
+  inlineLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  answerBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  answerBadgeText: {
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0.3,
   },
   selectionReasonCard: {
     backgroundColor: 'rgba(212, 175, 55, 0.08)',

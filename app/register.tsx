@@ -52,9 +52,7 @@ export default function RegisterScreen() {
       return t('auth.register.invalidEmail') || 'البريد الإلكتروني غير صحيح';
     }
 
-    if (!phone.trim()) {
-      return t('auth.register.phoneRequired') || 'رقم الهاتف مطلوب';
-    }
+    // رقم الهاتف اختياري - لا يوجد validation مطلوب
 
     if (!password.trim()) {
       return t('auth.register.passwordRequired') || 'كلمة المرور مطلوبة';
@@ -85,9 +83,9 @@ export default function RegisterScreen() {
     try {
       setIsLoading(true);
       
-      // إرسال OTP أولاً
-      const cleanPhone = phone.replace(/[^0-9]/g, '');
-      await sendOtp(cleanPhone, 'register');
+      // إرسال OTP أولاً - استخدام email للتسجيل
+      const cleanPhone = phone.trim() ? phone.replace(/[^0-9]/g, '') : '';
+      await sendOtp(email.trim(), 'register');
       
       // الانتقال لصفحة OTP مع البيانات
       router.push({

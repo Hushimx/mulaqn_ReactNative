@@ -7,8 +7,9 @@ interface TrackColors {
 
 interface TrackContextType {
   currentTrackId: number | null;
+  currentTrack: Track | null;
   trackColors: TrackColors;
-  setCurrentTrack: (id: number | null) => void;
+  setCurrentTrack: (id: number | null, track?: Track | null) => void;
 }
 
 const defaultColors: TrackColors = {
@@ -18,39 +19,98 @@ const defaultColors: TrackColors = {
 
 const TrackContext = createContext<TrackContextType | undefined>(undefined);
 
-export const getTrackColors = (trackId: number | null): TrackColors => {
-  switch (trackId) {
-    case 1: // قدرات - أخضر
+interface Track {
+  id: number;
+  code: string;
+  name: string;
+  description?: string;
+  icon?: string;
+  icon_emoji?: string;
+  primary_color?: string;
+  bg_color?: string;
+  gradient_colors?: string[];
+  hero_title?: string;
+  hero_subtitle?: string;
+  marketing_stats?: Array<{icon: string, label: string, value: string}>;
+  marketing_features?: string[];
+  marketing_benefits?: string[];
+  status?: string;
+  has_subscription?: boolean;
+  subscription_status?: string;
+}
+
+export const getTrackColors = (trackOrId: Track | number | null): TrackColors => {
+  // Handle Track object
+  if (trackOrId && typeof trackOrId === 'object' && 'id' in trackOrId) {
+    const track = trackOrId as Track;
+    if (track.primary_color && track.gradient_colors && track.gradient_colors.length >= 3) {
       return {
-        primary: '#118066',
-        gradient: ['#118D66', '#10372F', '#10372F'] as const,
+        primary: track.primary_color,
+        gradient: track.gradient_colors as [string, string, string],
       };
-    case 2: // تحصيلي - أزرق
-      return {
-        primary: '#3B82F6',
-        gradient: ['#2C5CA8', '#172944', '#172944'] as const,
-      };
-    case 3: // STEP - بنفسجي
-      return {
-        primary: '#8B5CF6',
-        gradient: ['#0F1419', '#8B5CF6', '#6D28D9'] as const, // بنفسجي داكن بدلاً من الأزرق
-      };
-    default:
-      return defaultColors;
+    }
+    // Fallback to hardcoded values based on track ID
+    switch (track.id) {
+      case 1: // قدرات - أخضر
+        return {
+          primary: '#10B981',
+          gradient: ['#0F1419', '#0A2E1F', '#1B365D'] as const,
+        };
+      case 2: // تحصيلي - أزرق
+        return {
+          primary: '#3B82F6',
+          gradient: ['#0F1419', '#0F1B2E', '#1B365D'] as const,
+        };
+      case 3: // STEP - بنفسجي
+        return {
+          primary: '#8B5CF6',
+          gradient: ['#0F1419', '#1A1526', '#1B365D'] as const,
+        };
+      default:
+        return defaultColors;
+    }
   }
+  
+  // Handle trackId (number) - fallback only
+  if (typeof trackOrId === 'number') {
+    switch (trackOrId) {
+      case 1: // قدرات - أخضر
+        return {
+          primary: '#10B981',
+          gradient: ['#0F1419', '#0A2E1F', '#1B365D'] as const,
+        };
+      case 2: // تحصيلي - أزرق
+        return {
+          primary: '#3B82F6',
+          gradient: ['#0F1419', '#0F1B2E', '#1B365D'] as const,
+        };
+      case 3: // STEP - بنفسجي
+        return {
+          primary: '#8B5CF6',
+          gradient: ['#0F1419', '#1A1526', '#1B365D'] as const,
+        };
+      default:
+        return defaultColors;
+    }
+  }
+  
+  return defaultColors;
 };
 
 export function TrackProvider({ children }: { children: ReactNode }) {
   const [currentTrackId, setCurrentTrackId] = useState<number | null>(null);
+  const [currentTrack, setCurrentTrackData] = useState<Track | null>(null);
 
-  const setCurrentTrack = (id: number | null) => {
+  const setCurrentTrack = (id: number | null, track?: Track | null) => {
     setCurrentTrackId(id);
+    setCurrentTrackData(track || null);
   };
 
-  const trackColors = getTrackColors(currentTrackId);
+  // Use track object if available, otherwise fallback to trackId
+  const trackColors = getTrackColors(currentTrack || currentTrackId);
 
   return (
-    <TrackContext.Provider value={{ currentTrackId, trackColors, setCurrentTrack }}>
+    <TrackContext.Provider value={{ currentTrackId, currentTrack, trackColors, setCurrentTrack }}>
       {children}
     </TrackContext.Provider>
   );

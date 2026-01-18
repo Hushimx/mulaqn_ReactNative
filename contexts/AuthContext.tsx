@@ -8,6 +8,9 @@ interface User {
   email: string;
   phone: string;
   avatar?: string | null;
+  avatar_shape?: string | null;
+  avatar_color?: string | null;
+  bio?: string | null;
   locale?: string;
   created_at?: string;
 }
@@ -206,10 +209,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   /**
    * إرسال OTP
+   * للتسجيل: يرسل email
+   * للباقي: يرسل phone
    */
-  const sendOtp = async (phone: string, purpose: 'login' | 'register' | 'reset_password' | 'verify_phone') => {
+  const sendOtp = async (identifier: string, purpose: 'login' | 'register' | 'reset_password' | 'verify_phone') => {
     try {
       setIsLoading(true);
+      
+      // بناء payload حسب purpose
+      const payload = purpose === 'register' 
+        ? { email: identifier, purpose }
+        : { phone: identifier, purpose };
+      
       const response = await api.post<{
         ok: boolean;
         data: {
@@ -219,7 +230,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           test_mode?: boolean;
         };
         error: null;
-      }>(API_ENDPOINTS.SEND_OTP, { phone, purpose });
+      }>(API_ENDPOINTS.SEND_OTP, payload);
 
       if (response && response.ok && response.data) {
         return;

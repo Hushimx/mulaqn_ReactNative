@@ -12,6 +12,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
+  I18nManager,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -58,34 +59,61 @@ export default function RegisterOtpScreen() {
   }, []);
 
   const handleOtpChange = (index: number, value: string) => {
+    // استخراج الأرقام فقط
     const numericValue = value.replace(/[^0-9]/g, '');
     
+    // إذا كانت القيمة أكثر من رقم واحد (Paste أو إدخال متعدد)
     if (numericValue.length > 1) {
       const digits = numericValue.split('').slice(0, 6);
       const newOtp = [...otpCode];
+      
+      // ملء الأرقام بدءاً من الفهرس الحالي
+      let filledCount = 0;
       digits.forEach((digit, i) => {
-        if (index + i < 6) {
-          newOtp[index + i] = digit;
+        const targetIndex = index + i;
+        if (targetIndex < 6) {
+          newOtp[targetIndex] = digit;
+          filledCount++;
         }
       });
+      
       setOtpCode(newOtp);
       
-      const nextIndex = Math.min(index + digits.length, 5);
-      otpInputs.current[nextIndex]?.focus();
-    } else {
+      // الانتقال للمربع التالي بعد آخر رقم تم إدخاله
+      const nextIndex = Math.min(index + filledCount, 5);
+      setTimeout(() => {
+        if (nextIndex < 5 && newOtp[nextIndex]) {
+          otpInputs.current[nextIndex + 1]?.focus();
+        } else {
+          otpInputs.current[nextIndex]?.focus();
+        }
+      }, 10);
+    } else if (numericValue.length === 1) {
+      // إدخال رقم واحد
       const newOtp = [...otpCode];
       newOtp[index] = numericValue;
       setOtpCode(newOtp);
 
-      if (numericValue && index < 5) {
-        otpInputs.current[index + 1]?.focus();
+      // الانتقال للمربع التالي عند الإدخال (من اليسار إلى اليمين)
+      if (index < 5) {
+        setTimeout(() => {
+          otpInputs.current[index + 1]?.focus();
+        }, 10);
       }
+    } else {
+      // حذف الرقم (Backspace)
+      const newOtp = [...otpCode];
+      newOtp[index] = '';
+      setOtpCode(newOtp);
     }
   };
 
   const handleOtpKeyPress = (index: number, key: string) => {
+    // عند الضغط على Backspace في مربع فارغ، الانتقال للمربع السابق
     if (key === 'Backspace' && !otpCode[index] && index > 0) {
-      otpInputs.current[index - 1]?.focus();
+      setTimeout(() => {
+        otpInputs.current[index - 1]?.focus();
+      }, 10);
     }
   };
 
@@ -134,7 +162,8 @@ export default function RegisterOtpScreen() {
 
     try {
       setIsLoading(true);
-      await sendOtp(phone, 'register');
+      // استخدام email لإعادة الإرسال (للتسجيل)
+      await sendOtp(email, 'register');
       setCountdown(60);
 
       Alert.alert(
@@ -181,22 +210,25 @@ export default function RegisterOtpScreen() {
 
             {/* Instructions */}
             <Text style={[styles.instructions, { textAlign }]}>
-              {t('otp.instructions') || 'لقد أرسلنا رمزا إلى رقم هاتفك الذي أدخلته، يرجى إدخال الرمز لإكمال التحقق.'}
+              {t('otp.instructions') || 'لقد أرسلنا رمز التحقق إلى بريدك الإلكتروني ({email})، يرجى التحقق من صندوق الوارد وإدخال الرمز لإكمال التحقق.'.replace('{email}', email)}
             </Text>
 
-            {/* OTP Input Fields */}
-            <View style={styles.otpContainer}>
+            {/* OTP Input Fields - Force LTR (left to right) even in RTL mode */}
+            <View style={[styles.otpContainer, I18nManager.isRTL && styles.otpContainerLTR]}>
               {otpCode.map((digit, index) => (
                 <TextInput
                   key={index}
                   ref={(ref) => (otpInputs.current[index] = ref)}
-                  style={styles.otpInput}
+                  style={[styles.otpInput, { textAlign: 'center' }]}
                   value={digit}
                   onChangeText={(value) => handleOtpChange(index, value)}
                   onKeyPress={({ nativeEvent }) => handleOtpKeyPress(index, nativeEvent.key)}
                   keyboardType="number-pad"
-                  maxLength={1}
+                  maxLength={6}
                   selectTextOnFocus
+                  textContentType="oneTimeCode"
+                  autoComplete="sms-otp"
+                  returnKeyType="done"
                 />
               ))}
             </View>
@@ -244,6 +276,7 @@ const styles = StyleSheet.create({
     paddingTop: 60,
     paddingBottom: 32,
     alignItems: 'center',
+    width: '100%',
   },
   logoContainer: {
     alignItems: 'center',
@@ -269,26 +302,28 @@ const styles = StyleSheet.create({
   },
   otpContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
+    alignItems: 'center',
     width: '100%',
-    maxWidth: 360,
+    paddingHorizontal: 24,
     marginBottom: 40,
-    gap: 14,
-    alignSelf: 'center',
+    gap: 12,
+  },
+  otpContainerLTR: {
+    flexDirection: 'row-reverse',
   },
   otpInput: {
-    flex: 1,
+    width: 52,
+    height: 64,
     backgroundColor: 'rgba(255, 255, 255, 0.1)',
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.2)',
     borderRadius: 12,
-    paddingVertical: 16,
     textAlign: 'center',
     color: '#FFFFFF',
     fontSize: 24,
     fontWeight: '700',
-    minWidth: 50,
-    maxWidth: 60,
+    writingDirection: 'ltr',
   },
   resendContainer: {
     justifyContent: 'center',

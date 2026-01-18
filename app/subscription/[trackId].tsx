@@ -27,6 +27,19 @@ interface Track {
   code: string;
   name: string;
   description?: string;
+  icon?: string;
+  icon_emoji?: string;
+  primary_color?: string;
+  bg_color?: string;
+  gradient_colors?: string[];
+  hero_title?: string;
+  hero_subtitle?: string;
+  marketing_stats?: Array<{icon: string, label: string, value: string}>;
+  marketing_features?: string[];
+  marketing_benefits?: string[];
+  status?: string;
+  has_subscription?: boolean;
+  subscription_status?: string;
 }
 
 interface SubscriptionPlan {
@@ -51,81 +64,7 @@ interface UserSubscription {
   };
 }
 
-// Marketing content for each track
-const trackMarketingContent = {
-  1: { // قدرات
-    heroTitle: 'اكتشف قدراتك الحقيقية',
-    heroSubtitle: 'اختبار القدرات العامة - رحلتك نحو النجاح تبدأ من هنا',
-    stats: [
-      { icon: 'school', label: 'دروس تفاعلية', value: '500+' },
-      { icon: 'quiz', label: 'أسئلة محاكاة', value: '10,000+' },
-      { icon: 'trending-up', label: 'نسبة النجاح', value: '95%' },
-      { icon: 'people', label: 'طلاب نشطون', value: '50,000+' },
-    ],
-    features: [
-      'وصول غير محدود لجميع الدروس التفاعلية',
-      'أسئلة محاكاة حقيقية للاختبار',
-      'تتبع تقدمك بدقة مع تحليلات متقدمة',
-      'تقارير تفصيلية أسبوعية وشهرية',
-      'نظام إتقان المهارات (IRT)',
-      'لوحة صدارة تنافسية',
-      'إنجازات وبادجات حصرية',
-    ],
-    benefits: [
-      'حسّن قدراتك التحليلية والاستدلالية',
-      'استعد بثقة للاختبار النهائي',
-      'احصل على نتائج مضمونة',
-    ],
-  },
-  2: { // تحصيلي
-    heroTitle: 'احقق أعلى الدرجات',
-    heroSubtitle: 'الاختبار التحصيلي - اجتياز المواد الدراسية بامتياز',
-    stats: [
-      { icon: 'book', label: 'مواد شاملة', value: '6+' },
-      { icon: 'assignment', label: 'اختبارات محاكاة', value: '200+' },
-      { icon: 'star', label: 'نسبة التفوق', value: '92%' },
-      { icon: 'groups', label: 'طلاب متفوقون', value: '45,000+' },
-    ],
-    features: [
-      'دروس شاملة لجميع المواد الدراسية',
-      'اختبارات محاكاة حقيقية',
-      'شرح مفصل لكل سؤال',
-      'تتبع أدائك في كل مادة',
-      'خطط دراسية مخصصة',
-      'نظام مراجعة ذكي',
-      'إحصائيات تفصيلية',
-    ],
-    benefits: [
-      'قوّي تحصيلك في جميع المواد',
-      'احصل على أعلى الدرجات',
-      'كن جاهزاً للاختبار النهائي',
-    ],
-  },
-  3: { // STEP
-    heroTitle: 'أتقن اللغة الإنجليزية',
-    heroSubtitle: 'اختبار كفايات اللغة الإنجليزية - خطوتك الأولى نحو العالمية',
-    stats: [
-      { icon: 'translate', label: 'مستويات متقدمة', value: '5+' },
-      { icon: 'record-voice-over', label: 'تدريبات صوتية', value: '1,000+' },
-      { icon: 'verified', label: 'نسبة النجاح', value: '88%' },
-      { icon: 'public', label: 'طلاب دوليون', value: '30,000+' },
-    ],
-    features: [
-      'دروس تفاعلية لجميع المهارات',
-      'تدريبات على القراءة والكتابة',
-      'اختبارات استماع حقيقية',
-      'قواعد شاملة مع أمثلة',
-      'مفردات متقدمة',
-      'اختبارات محاكاة STEP',
-      'تتبع تقدمك في كل مهارة',
-    ],
-    benefits: [
-      'حسّن مستواك في اللغة الإنجليزية',
-      'احصل على شهادة معتمدة',
-      'افتح آفاقاً جديدة لمستقبلك',
-    ],
-  },
-};
+// Marketing content will come from API (track.hero_title, track.hero_subtitle, track.marketing_stats, etc.)
 
 export default function SubscriptionScreen() {
   const router = useRouter();
@@ -144,8 +83,20 @@ export default function SubscriptionScreen() {
   const slideAnim = useRef(new Animated.Value(50)).current;
   const scaleAnim = useRef(new Animated.Value(0.9)).current;
 
-  const trackColors = getTrackColors(track?.id || null);
-  const marketingContent = trackMarketingContent[track?.id as keyof typeof trackMarketingContent] || trackMarketingContent[1];
+  const trackColors = getTrackColors(track);
+  const marketingContent = track ? {
+    heroTitle: track.hero_title || 'اكتشف قدراتك الحقيقية',
+    heroSubtitle: track.hero_subtitle || 'رحلتك نحو النجاح تبدأ من هنا',
+    stats: track.marketing_stats || [],
+    features: track.marketing_features || [],
+    benefits: track.marketing_benefits || [],
+  } : {
+    heroTitle: 'اكتشف قدراتك الحقيقية',
+    heroSubtitle: 'رحلتك نحو النجاح تبدأ من هنا',
+    stats: [],
+    features: [],
+    benefits: [],
+  };
 
   useEffect(() => {
     fetchData();

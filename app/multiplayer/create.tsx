@@ -72,9 +72,9 @@ export default function MultiplayerCreateScreen() {
     <GradientBackground colors={colors.gradient}>
       <StatusBar barStyle="light-content" />
       <View style={styles.container}>
-        <Animated.View entering={FadeInDown.duration(600)} style={styles.header}>
+        <Animated.View entering={FadeInDown.duration(600)} style={[styles.header, { flexDirection }]}>
           <TouchableOpacity
-            style={styles.backButton}
+            style={[styles.backButton, flexDirection === 'row-reverse' && styles.backButtonRTL]}
             onPress={() => router.back()}
           >
             <MaterialIcons
@@ -83,14 +83,14 @@ export default function MultiplayerCreateScreen() {
               color="#FFFFFF"
             />
           </TouchableOpacity>
-          <Text style={styles.title}>إنشاء جلسة</Text>
+          <Text style={[styles.title, { textAlign }]}>إنشاء جلسة</Text>
         </Animated.View>
 
         <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
           {/* Questions Count */}
           <Animated.View entering={FadeInUp.duration(600).delay(200)} style={styles.section}>
-            <Text style={styles.sectionTitle}>عدد الأسئلة</Text>
-            <View style={styles.countContainer}>
+            <Text style={[styles.sectionTitle, { textAlign }]}>عدد الأسئلة</Text>
+            <View style={[styles.countContainer, { flexDirection }]}>
               {[3, 15, 30, 50, 100].map((count) => ( // ✅ Added 3 for debugging
                 <TouchableOpacity
                   key={count}
@@ -118,10 +118,11 @@ export default function MultiplayerCreateScreen() {
 
           {/* Win Type */}
           <Animated.View entering={FadeInUp.duration(600).delay(400)} style={styles.section}>
-            <Text style={styles.sectionTitle}>نوع الفوز</Text>
+            <Text style={[styles.sectionTitle, { textAlign }]}>نوع الفوز</Text>
             <TouchableOpacity
               style={[
                 styles.optionCard,
+                { flexDirection },
                 winType === 'highest_percentage' && { borderColor: colors.primary, borderWidth: 2 },
               ]}
               onPress={() => {
@@ -135,15 +136,16 @@ export default function MultiplayerCreateScreen() {
                 size={24}
                 color={winType === 'highest_percentage' ? colors.primary : '#FFFFFF'}
               />
-              <View style={styles.optionContent}>
-                <Text style={styles.optionTitle}>أعلى نسبة</Text>
-                <Text style={styles.optionDesc}>الفائز هو من يحصل على أعلى نسبة إجابات صحيحة</Text>
+              <View style={[styles.optionContent, flexDirection === 'row-reverse' && styles.optionContentRTL]}>
+                <Text style={[styles.optionTitle, { textAlign }]}>أعلى نسبة</Text>
+                <Text style={[styles.optionDesc, { textAlign }]}>الفائز هو من يحصل على أعلى نسبة إجابات صحيحة</Text>
               </View>
             </TouchableOpacity>
 
             <TouchableOpacity
               style={[
                 styles.optionCard,
+                { flexDirection },
                 winType === 'first_to_errors' && { borderColor: colors.primary, borderWidth: 2 },
               ]}
               onPress={() => {
@@ -157,9 +159,9 @@ export default function MultiplayerCreateScreen() {
                 size={24}
                 color={winType === 'first_to_errors' ? colors.primary : '#FFFFFF'}
               />
-              <View style={styles.optionContent}>
-                <Text style={styles.optionTitle}>أول من يخطئ</Text>
-                <Text style={styles.optionDesc}>أول من يصل لعدد معين من الأخطاء يخسر</Text>
+              <View style={[styles.optionContent, flexDirection === 'row-reverse' && styles.optionContentRTL]}>
+                <Text style={[styles.optionTitle, { textAlign }]}>أول من يخطئ</Text>
+                <Text style={[styles.optionDesc, { textAlign }]}>أول من يصل لعدد معين من الأخطاء يخسر</Text>
               </View>
             </TouchableOpacity>
           </Animated.View>
@@ -167,8 +169,8 @@ export default function MultiplayerCreateScreen() {
           {/* Win Value (if first_to_errors) */}
           {winType === 'first_to_errors' && (
             <Animated.View entering={FadeInUp.duration(600).delay(600)} style={styles.section}>
-              <Text style={styles.sectionTitle}>عدد الأخطاء</Text>
-              <View style={styles.countContainer}>
+              <Text style={[styles.sectionTitle, { textAlign }]}>عدد الأخطاء</Text>
+              <View style={[styles.countContainer, { flexDirection }]}>
                 {[5, 10, 15].map((value) => (
                   <TouchableOpacity
                     key={value}
@@ -198,7 +200,7 @@ export default function MultiplayerCreateScreen() {
           {/* Create Button */}
           <Animated.View entering={FadeInUp.duration(600).delay(800)}>
             <TouchableOpacity
-              style={[styles.createButton, { backgroundColor: colors.primary }]}
+              style={[styles.createButton, { backgroundColor: colors.primary, flexDirection }]}
               onPress={handleCreate}
               disabled={loading || (winType === 'first_to_errors' && !winValue)}
             >
@@ -237,6 +239,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginRight: 16,
   },
+  backButtonRTL: {
+    marginRight: 0,
+    marginLeft: 16,
+  },
   title: {
     fontSize: 24,
     fontWeight: '700',
@@ -259,7 +265,6 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   countContainer: {
-    flexDirection: 'row',
     gap: 12,
     flexWrap: 'wrap',
   },
@@ -277,7 +282,6 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   optionCard: {
-    flexDirection: 'row',
     alignItems: 'center',
     padding: 16,
     borderRadius: 12,
@@ -285,10 +289,15 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: 'rgba(255, 255, 255, 0.2)',
     marginBottom: 12,
+    gap: 12,
   },
   optionContent: {
     flex: 1,
     marginLeft: 12,
+  },
+  optionContentRTL: {
+    marginLeft: 0,
+    marginRight: 12,
   },
   optionTitle: {
     fontSize: 16,
@@ -301,7 +310,6 @@ const styles = StyleSheet.create({
     color: 'rgba(255, 255, 255, 0.7)',
   },
   createButton: {
-    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 18,

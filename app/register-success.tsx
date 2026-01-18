@@ -14,6 +14,7 @@ import { GradientButton } from '@/components/ui/GradientButton';
 import { GradientBackground } from '@/components/ui/GradientBackground';
 import { LanguageSwitcher } from '@/components/ui/LanguageSwitcher';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { getSelectedTrackId, clearSelectedTrackId } from '@/utils/trackSelection';
 
 export default function RegisterSuccessScreen() {
   const { t } = useTranslation();
@@ -21,6 +22,17 @@ export default function RegisterSuccessScreen() {
   const params = useLocalSearchParams();
   const { textAlign } = useLanguage();
   const fullName = params.fullName as string || '';
+
+  const handleStart = async () => {
+    // التحقق من selectedTrackId والـ redirect للمسار المختار
+    const selectedTrackId = await getSelectedTrackId();
+    if (selectedTrackId) {
+      await clearSelectedTrackId();
+      router.replace(`/(tabs)/tracks/${selectedTrackId}`);
+    } else {
+      router.replace('/(tabs)');
+    }
+  };
 
   return (
     <GradientBackground>
@@ -50,7 +62,7 @@ export default function RegisterSuccessScreen() {
           {/* Start Button */}
           <GradientButton
             text={t('register.success.startButton') || 'ابدأ وتعلم'}
-            onPress={() => router.replace('/(tabs)')}
+            onPress={handleStart}
           />
         </View>
       </SafeAreaView>

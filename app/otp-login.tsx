@@ -21,6 +21,7 @@ import { GradientBackground } from '@/components/ui/GradientBackground';
 import { LanguageSwitcher } from '@/components/ui/LanguageSwitcher';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { getSelectedTrackId, clearSelectedTrackId } from '@/utils/trackSelection';
 import { useRTL } from '@/hooks/useRTL';
 
 export default function OtpLoginScreen() {
@@ -131,7 +132,15 @@ export default function OtpLoginScreen() {
     try {
       setIsLoading(true);
       await verifyOtp(cleanPhone, fullOtp, 'login');
+      
+      // التحقق من selectedTrackId والـ redirect للمسار المختار
+      const selectedTrackId = await getSelectedTrackId();
+      if (selectedTrackId) {
+        await clearSelectedTrackId();
+        router.replace(`/(tabs)/tracks/${selectedTrackId}`);
+      } else {
       router.replace('/(tabs)');
+      }
     } catch (error) {
       Alert.alert(
         t('common.error') || 'خطأ',

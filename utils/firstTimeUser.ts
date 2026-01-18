@@ -20,4 +20,15 @@ export async function isFirstTime(): Promise<boolean> {
   }
 }
 
+/**
+ * إعادة تعيين firstTime flag (لأدوات المطور)
+ */
+export async function resetFirstTime(): Promise<void> {
+  try {
+    await AsyncStorage.removeItem(FIRST_TIME_KEY);
+  } catch (error) {
+    console.error('Error resetting first time:', error);
+  }
+}
+
 

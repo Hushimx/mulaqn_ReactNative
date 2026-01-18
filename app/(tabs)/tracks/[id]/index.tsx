@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   StyleSheet,
   SafeAreaView,
@@ -32,9 +32,12 @@ import { useTrack, getTrackColors } from '@/contexts/TrackContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { api, API_ENDPOINTS } from '@/utils/api';
+import { logger } from '@/utils/logger';
 import { ActiveAssessmentModal } from '@/components/ActiveAssessmentModal';
 import { SkeletonStatCard, SkeletonAssessmentCard, SkeletonLoader } from '@/components/ui/SkeletonLoader';
 import { SubscriptionRequiredScreen } from '@/components/SubscriptionRequiredScreen';
+import SmartScheduleWidget from '@/components/schedule/SmartScheduleWidget';
+import { ParticlesBackground } from '@/components/ui/ParticlesBackground';
 
 interface Track {
   id: number;
@@ -42,6 +45,10 @@ interface Track {
   name: string;
   description?: string;
   icon?: string;
+  icon_emoji?: string;
+  primary_color?: string;
+  bg_color?: string;
+  gradient_colors?: string[];
 }
 
 interface Assessment {
@@ -59,6 +66,22 @@ interface UserPoints {
   weekly_points: number;
 }
 
+interface AssessmentAttempt {
+  id: number;
+  assessment_id: number;
+  assessment: {
+    id: number;
+    name: string;
+    type: 'periodic' | 'diagnostic' | 'simulation';
+  };
+  raw_score: number;
+  score_total: number;
+  percentage: number;
+  submitted_at: string;
+  time_spent_sec: number;
+  correct_answers_count: number;
+}
+
 export default function TrackDashboardScreen() {
   const { t } = useTranslation();
   const { isRTL, textAlign, flexDirection } = useLanguage();
@@ -74,17 +97,39 @@ export default function TrackDashboardScreen() {
   const [completedTests, setCompletedTests] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [recentAttempts, setRecentAttempts] = useState<AssessmentAttempt[]>([]);
+  const [loadingAttempts, setLoadingAttempts] = useState(false);
   const [activeAttempt, setActiveAttempt] = useState<any>(null);
   const [showActiveModal, setShowActiveModal] = useState(false);
   const [cancelingAttempt, setCancelingAttempt] = useState(false);
   const [hasSubscription, setHasSubscription] = useState<boolean | null>(null);
   const [checkingSubscription, setCheckingSubscription] = useState(true);
+  
+  // Ref لتتبع ما إذا تم تحميل البيانات مسبقاً (لتجنب إعادة التحميل المتكرر)
+  const hasFetchedData = useRef(false);
+  const lastTrackId = useRef<number | null>(null);
 
   const trackId = parseInt(id);
-  const colors = getTrackColors(trackId);
+  // Use track object if available (from API), otherwise fallback to trackId
+  // This ensures colors update when track is loaded from API
+  const colors = useMemo(() => getTrackColors(track || trackId), [track, trackId]);
 
   useEffect(() => {
     if (id && trackId) {
+      // إذا تغير trackId، أعد تعيين flags
+      if (lastTrackId.current !== trackId) {
+        hasFetchedData.current = false;
+        lastTrackId.current = trackId;
+        // إعادة تعيين states عند تغيير track
+        setTrack(null);
+        setAssessments([]);
+        setUserPoints(null);
+        setLessonsCount(0);
+        setCompletedTests(0);
+        setError(null);
+        setLoading(true);
+      }
+      
       // تأكد من تحديث track context عند تحميل الصفحة
       setCurrentTrack(trackId);
       checkSubscription();
@@ -94,11 +139,19 @@ export default function TrackDashboardScreen() {
     return () => {
       // لا نفعل شيء - دع TabLayout يمسح عند الرجوع للصفحة الرئيسية
     };
-  }, [id, trackId, setCurrentTrack]);
+  }, [id, trackId]); // إزالة setCurrentTrack من dependencies لتجنب استدعاءات متعددة
+
+  // Update track context when track data is loaded from API
+  useEffect(() => {
+    if (track) {
+      setCurrentTrack(trackId, track);
+    }
+  }, [track, trackId, setCurrentTrack]);
 
   useEffect(() => {
-    // بعد التحقق من الاشتراك، جلب البيانات
-    if (hasSubscription !== null && trackId) {
+    // بعد التحقق من الاشتراك، جلب البيانات (مرة واحدة فقط لكل trackId)
+    if (hasSubscription !== null && trackId && !hasFetchedData.current) {
+      hasFetchedData.current = true;
       fetchTrackData();
       checkActiveAttempt();
     }
@@ -116,7 +169,7 @@ export default function TrackDashboardScreen() {
         setHasSubscription(false);
       }
     } catch (err) {
-      console.error('Error checking subscription:', err);
+      logger.error('Error checking subscription:', err);
       setHasSubscription(false);
     } finally {
       setCheckingSubscription(false);
@@ -158,85 +211,123 @@ export default function TrackDashboardScreen() {
       setLoading(true);
       setError(null);
 
-      // جلب معلومات المسار
-      const trackResponse = await api.get<{ ok: boolean; data: Track }>(
+      // جلب معلومات المسار (دائماً)
+      const trackPromise = api.get<{ ok: boolean; data: Track }>(
         API_ENDPOINTS.TRACK(id)
-      );
+      ).catch((err) => {
+        logger.error('Error loading track:', err);
+        return null;
+      });
 
-      if (trackResponse && trackResponse.ok && trackResponse.data) {
-        setTrack(trackResponse.data);
-      }
-
-      // جلب نقاط المستخدم (فقط إذا كان مشترك)
+      // جلب البيانات الأخرى (فقط إذا كان مشترك) - متوازية
       if (hasSubscription) {
-        try {
-          const pointsResponse = await api.get<{ ok: boolean; data: UserPoints }>(
-            API_ENDPOINTS.POINTS,
-            { silent401: true } // لا ترمي خطأ عند 401
-          );
-          if (pointsResponse && pointsResponse.ok && pointsResponse.data) {
-            setUserPoints(pointsResponse.data);
-          }
-        } catch (err: any) {
+        const pointsPromise = api.get<{ ok: boolean; data: UserPoints }>(
+          API_ENDPOINTS.POINTS,
+          { silent401: true } // لا ترمي خطأ عند 401
+        ).catch((err: any) => {
           // تجاهل خطأ 401 (token منتهي) - هذا طبيعي
           if (err?.message?.includes('انتهت صلاحية الجلسة')) {
             // لا تفعل شيء - المستخدم يحتاج تسجيل الدخول
           } else {
-            console.log('Points not available');
+            logger.log('Points not available');
           }
+          return null;
+        });
+
+        const assessmentsPromise = api.get<{ ok: boolean; data: Assessment[] | { assessments: Assessment[]; has_subscription: boolean } }>(
+          API_ENDPOINTS.ASSESSMENTS(id)
+        ).catch((err) => {
+          logger.error('Error loading assessments:', err);
+          return null;
+        });
+
+        const lessonsPromise = api.get<{ ok: boolean; data: any[] }>(
+          API_ENDPOINTS.LESSONS(id)
+        ).catch((err) => {
+          logger.log('Lessons count not available');
+          return null;
+        });
+
+        const recentAttemptsPromise = api.get<{ ok: boolean; data: AssessmentAttempt[] }>(
+          API_ENDPOINTS.RECENT_ATTEMPTS(id)
+        ).catch((err) => {
+          logger.log('Recent attempts not available');
+          return null;
+        });
+
+        // تنفيذ جميع الـ calls متوازياً
+        const [trackResponse, pointsResponse, assessmentsResponse, lessonsResponse, attemptsResponse] = await Promise.all([
+          trackPromise,
+          pointsPromise,
+          assessmentsPromise,
+          lessonsPromise,
+          recentAttemptsPromise,
+        ]);
+
+        // معالجة نتائج المسار
+        if (trackResponse && trackResponse.ok && trackResponse.data) {
+          setTrack(trackResponse.data);
         }
 
-        // جلب الاختبارات
-        try {
-          const assessmentsResponse = await api.get<{ ok: boolean; data: Assessment[] | { assessments: Assessment[]; has_subscription: boolean } }>(
-            API_ENDPOINTS.ASSESSMENTS(id)
-          );
-          if (assessmentsResponse && assessmentsResponse.ok && assessmentsResponse.data) {
-            let assessmentsData: Assessment[] = [];
-            
-            // دعم التنسيق القديم والجديد
-            if (Array.isArray(assessmentsResponse.data)) {
-              assessmentsData = assessmentsResponse.data;
-            } else if (assessmentsResponse.data && typeof assessmentsResponse.data === 'object' && 'assessments' in assessmentsResponse.data) {
-              assessmentsData = (assessmentsResponse.data as { assessments: Assessment[]; has_subscription: boolean }).assessments;
-            }
-            
-            console.log('Assessments loaded:', assessmentsData.length, assessmentsData.map(a => ({ type: a.type, name: a.name })));
-            setAssessments(assessmentsData);
-          } else {
-            console.log('Assessments response invalid:', assessmentsResponse);
-          }
-        } catch (err) {
-          console.error('Error loading assessments:', err);
+        // معالجة نقاط المستخدم
+        if (pointsResponse && pointsResponse.ok && pointsResponse.data) {
+          setUserPoints(pointsResponse.data);
         }
 
-        // جلب عدد الدروس
-        try {
-          const lessonsResponse = await api.get<{ ok: boolean; data: any[] }>(
-            API_ENDPOINTS.LESSONS(id)
-          );
-          if (lessonsResponse && lessonsResponse.ok && lessonsResponse.data) {
-            setLessonsCount(lessonsResponse.data.length);
+        // معالجة الاختبارات
+        if (assessmentsResponse && assessmentsResponse.ok && assessmentsResponse.data) {
+          let assessmentsData: Assessment[] = [];
+          
+          // دعم التنسيق القديم والجديد
+          if (Array.isArray(assessmentsResponse.data)) {
+            assessmentsData = assessmentsResponse.data;
+          } else if (assessmentsResponse.data && typeof assessmentsResponse.data === 'object' && 'assessments' in assessmentsResponse.data) {
+            assessmentsData = (assessmentsResponse.data as { assessments: Assessment[]; has_subscription: boolean }).assessments;
           }
-        } catch (err) {
-          console.log('Lessons count not available');
+          
+          logger.log('Assessments loaded:', assessmentsData.length, assessmentsData.map(a => ({ type: a.type, name: a.name })));
+          setAssessments(assessmentsData);
+        }
+
+        // معالجة عدد الدروس
+        if (lessonsResponse && lessonsResponse.ok && lessonsResponse.data) {
+          setLessonsCount(lessonsResponse.data.length);
+        }
+
+        // معالجة آخر المحاولات
+        if (attemptsResponse && attemptsResponse.ok && attemptsResponse.data) {
+          setRecentAttempts(attemptsResponse.data);
+          setCompletedTests(attemptsResponse.data.length);
+        }
+      } else {
+        // إذا لم يكن مشترك، جلب المسار فقط
+        const trackResponse = await trackPromise;
+        if (trackResponse && trackResponse.ok && trackResponse.data) {
+          setTrack(trackResponse.data);
         }
       }
 
     } catch (err) {
-      console.error('Error fetching track data:', err);
+      logger.error('Error fetching track data:', err);
       setError(err instanceof Error ? err.message : t('tracks.errorLoading'));
     } finally {
       setLoading(false);
     }
   };
 
-  const getTrackEmoji = (trackId: number) => {
-    switch (trackId) {
-      case 1: return '🤖'; // قدرات
-      case 2: return '🤖'; // تحصيلي
-      case 3: return '🤖'; // STEP
-      default: return '🤖';
+  const getTrackEmoji = (track: Track | null) => {
+    if (track?.icon_emoji) {
+      return track.icon_emoji;
+    }
+    if (track?.icon) {
+      return track.icon;
+    }
+    // Fallback based on track ID
+    switch (track?.id) {
+      case 1: return '🧠'; // قدرات
+      case 2: return '📐'; // تحصيلي
+      case 3: return '🌐'; // STEP
+      default: return '📚';
     }
   };
 
@@ -430,6 +521,7 @@ export default function TrackDashboardScreen() {
   return (
     <GradientBackground colors={colors.gradient}>
       <StatusBar barStyle="light-content" />
+      <ParticlesBackground color={colors.primary} particleCount={12} opacity={0.3} />
       <SafeAreaView style={styles.safeArea}>
         {/* Header with Back Button */}
         <View style={styles.topHeader}>
@@ -460,7 +552,7 @@ export default function TrackDashboardScreen() {
               entering={ZoomIn.duration(800).delay(200).springify()}
               style={styles.trackEmoji}
             >
-              {getTrackEmoji(trackId)}
+              {getTrackEmoji(track)}
             </Animated.Text>
             <Animated.Text 
               entering={FadeInUp.duration(600).delay(300)}
@@ -528,6 +620,16 @@ export default function TrackDashboardScreen() {
               <Text style={styles.statIcon}>📚</Text>
             </Animated.View>
           </View>
+
+          {/* Smart Schedule Widget - يظهر فقط للمشتركين */}
+          {hasSubscription === true && trackId && (
+            <Animated.View entering={FadeInUp.duration(600).delay(1000)}>
+              <SmartScheduleWidget 
+                trackId={trackId} 
+                trackColor={colors.primary}
+              />
+            </Animated.View>
+          )}
 
           {/* Level Review Card with Animation */}
           <Animated.View entering={FadeInUp.duration(600).delay(1000)}>
@@ -757,6 +859,138 @@ export default function TrackDashboardScreen() {
               </Text>
             </View>
           </View>
+
+          {/* Recent Attempts Section */}
+          {recentAttempts.length > 0 && (
+            <Animated.View entering={FadeInUp.duration(600).delay(1300)}>
+              <View style={styles.recentAttemptsSection}>
+                <View style={[styles.recentAttemptsHeader, { flexDirection }]}>
+                  <View style={[styles.recentAttemptsTitleDot, { backgroundColor: colors.primary }]} />
+                  <Text style={[styles.recentAttemptsTitle, { textAlign }]}>آخر نشاطك</Text>
+                </View>
+                <Text style={[styles.recentAttemptsDescription, { textAlign }]}>
+                  آخر الاختبارات التي أكملتها مع تفاصيل الأداء
+                </Text>
+                <View style={[styles.recentAttemptsLine, { backgroundColor: `${colors.primary}30` }]} />
+                
+                <View style={styles.recentAttemptsList}>
+                  {recentAttempts.slice(0, 3).map((attempt, index) => {
+                    const getPerformanceColor = (percentage: number) => {
+                      if (percentage >= 80) return '#10B981';
+                      if (percentage >= 70) return '#F59E0B';
+                      if (percentage >= 50) return '#F97316';
+                      return '#EF4444';
+                    };
+                    
+                    const getAssessmentIcon = (type: string) => {
+                      switch (type) {
+                        case 'periodic': return '⚡';
+                        case 'diagnostic': return '🎯';
+                        case 'simulation': return '🏆';
+                        default: return '📋';
+                      }
+                    };
+                    
+                    const performanceColor = getPerformanceColor(attempt.percentage);
+                    
+                    return (
+                      <Animated.View
+                        key={attempt.id}
+                        entering={FadeInUp.duration(500).delay(1400 + index * 100)}
+                      >
+                        <TouchableOpacity
+                          style={[styles.attemptCard, { borderColor: `${performanceColor}40` }]}
+                          onPress={() => {
+                            router.push(`/assessments/${attempt.assessment_id}/review?attemptId=${attempt.id}`);
+                          }}
+                          activeOpacity={0.8}
+                        >
+                          <View style={[styles.attemptHeader, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+                            <View style={[styles.attemptInfo, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+                              <Text style={styles.attemptIcon}>
+                                {getAssessmentIcon(attempt.assessment.type)}
+                              </Text>
+                              <View style={styles.attemptTextContainer}>
+                                <Text style={[styles.attemptName, { textAlign }]} numberOfLines={1}>
+                                  {attempt.assessment.name}
+                                </Text>
+                                <Text style={[styles.attemptDate, { textAlign }]}>
+                                  {new Date(attempt.submitted_at).toLocaleDateString('ar-SA', {
+                                    year: 'numeric',
+                                    month: 'short',
+                                    day: 'numeric',
+                                  })}
+                                </Text>
+                              </View>
+                            </View>
+                            <Text style={[styles.attemptPercentage, { color: performanceColor }]}>
+                              {attempt.percentage}%
+                            </Text>
+                          </View>
+                          
+                          <View style={styles.progressContainer}>
+                            <View style={[styles.progressBar, { backgroundColor: 'rgba(255, 255, 255, 0.1)' }]}>
+                              <Animated.View
+                                style={[
+                                  styles.progressFill,
+                                  {
+                                    width: `${attempt.percentage}%`,
+                                    backgroundColor: performanceColor,
+                                  },
+                                ]}
+                              />
+                            </View>
+                          </View>
+                          
+                          <View style={[styles.attemptStats, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+                            <View style={styles.attemptStatItem}>
+                              <Text style={styles.attemptStatNumber}>{attempt.correct_answers_count}</Text>
+                              <Text style={styles.attemptStatLabel}>صحيحة</Text>
+                            </View>
+                            <View style={styles.attemptStatItem}>
+                              <Text style={styles.attemptStatNumber}>
+                                {Math.floor(attempt.time_spent_sec / 60)}
+                              </Text>
+                              <Text style={styles.attemptStatLabel}>دقيقة</Text>
+                            </View>
+                            <TouchableOpacity
+                              style={styles.reviewButton}
+                              onPress={() => {
+                                router.push(`/assessments/${attempt.assessment_id}/review?attemptId=${attempt.id}`);
+                              }}
+                            >
+                              <Text style={[styles.reviewButtonText, { color: '#D4AF37' }]}>
+                                {isRTL ? '← مراجعة' : 'مراجعة →'}
+                              </Text>
+                            </TouchableOpacity>
+                          </View>
+                        </TouchableOpacity>
+                      </Animated.View>
+                    );
+                  })}
+                </View>
+                
+                {recentAttempts.length > 3 && (
+                  <TouchableOpacity
+                    style={[styles.viewAllButton, { borderColor: colors.primary, backgroundColor: `${colors.primary}15`, flexDirection: isRTL ? 'row-reverse' : 'row' }]}
+                    onPress={() => {
+                      router.push(`/(tabs)/tracks/${id}/attempts-history`);
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[styles.viewAllButtonText, { color: colors.primary }]}>
+                      عرض جميع الاختبارات
+                    </Text>
+                    <MaterialIcons 
+                      name={isRTL ? "arrow-forward" : "arrow-back"} 
+                      size={20} 
+                      color={colors.primary}
+                    />
+                  </TouchableOpacity>
+                )}
+              </View>
+            </Animated.View>
+          )}
         </ScrollView>
 
         {/* Modal للاختبار النشط */}
@@ -1065,5 +1299,144 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     textAlign: 'center', // محاذاة للمنتصف
+  },
+  recentAttemptsSection: {
+    marginTop: 32,
+    marginBottom: 24,
+  },
+  recentAttemptsHeader: {
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 10,
+  },
+  recentAttemptsTitleDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.3,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  recentAttemptsTitle: {
+    color: '#FFFFFF',
+    fontSize: 20,
+    fontWeight: '700',
+    includeFontPadding: false,
+  },
+  recentAttemptsDescription: {
+    color: 'rgba(255, 255, 255, 0.7)',
+    fontSize: 13,
+    lineHeight: 19,
+    marginBottom: 12,
+    paddingHorizontal: 4,
+  },
+  recentAttemptsLine: {
+    height: 2,
+    borderRadius: 1,
+    width: '100%',
+    opacity: 0.6,
+    marginBottom: 16,
+  },
+  recentAttemptsList: {
+    gap: 12,
+    marginBottom: 16,
+  },
+  attemptCard: {
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  attemptHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
+  attemptInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  attemptIcon: {
+    fontSize: 32,
+  },
+  attemptTextContainer: {
+    flex: 1,
+  },
+  attemptName: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  attemptDate: {
+    color: 'rgba(255, 255, 255, 0.6)',
+    fontSize: 12,
+  },
+  attemptPercentage: {
+    fontSize: 24,
+    fontWeight: '700',
+  },
+  progressContainer: {
+    marginBottom: 12,
+  },
+  progressBar: {
+    height: 6,
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: 3,
+  },
+  attemptStats: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  attemptStatItem: {
+    alignItems: 'center',
+  },
+  attemptStatNumber: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 2,
+  },
+  attemptStatLabel: {
+    color: 'rgba(255, 255, 255, 0.6)',
+    fontSize: 11,
+  },
+  reviewButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  reviewButtonText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  viewAllButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 2,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  viewAllButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
   },
 });

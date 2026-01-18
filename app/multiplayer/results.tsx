@@ -11,6 +11,7 @@ import {
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { GradientBackground } from '@/components/ui/GradientBackground';
+import { AvatarDisplay } from '@/components/profile/AvatarDisplay';
 import { getTrackColors } from '@/contexts/TrackContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -24,6 +25,8 @@ interface ParticipantResult {
   score: number;
   errors_count: number;
   percentage: number;
+  avatar_shape?: string | null;
+  avatar_color?: string | null;
 }
 
 interface Breakdown {
@@ -134,9 +137,11 @@ export default function MultiplayerResultsScreen() {
               ]}
             >
               <View style={styles.resultHeader}>
-                <View style={[styles.resultAvatar, { backgroundColor: '#60A5FA' }]}>
-                  <MaterialIcons name="person" size={24} color="#FFFFFF" />
-                </View>
+                <AvatarDisplay
+                  shape={myResult.avatar_shape || undefined}
+                  color={myResult.avatar_color || undefined}
+                  size={48}
+                />
                 <View style={styles.resultInfo}>
                   <Text style={styles.resultName}>{myResult.name} (أنت)</Text>
                   <Text style={styles.resultScore}>
@@ -159,9 +164,11 @@ export default function MultiplayerResultsScreen() {
               ]}
             >
               <View style={styles.resultHeader}>
-                <View style={[styles.resultAvatar, { backgroundColor: '#FB923C' }]}>
-                  <MaterialIcons name="person" size={24} color="#FFFFFF" />
-                </View>
+                <AvatarDisplay
+                  shape={otherResult.avatar_shape || undefined}
+                  color={otherResult.avatar_color || undefined}
+                  size={48}
+                />
                 <View style={styles.resultInfo}>
                   <Text style={styles.resultName}>{otherResult.name}</Text>
                   <Text style={styles.resultScore}>

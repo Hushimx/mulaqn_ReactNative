@@ -2,13 +2,15 @@ import { HapticTab } from '@/components/HapticTab';
 import TabBarBackground from '@/components/ui/TabBarBackground';
 import { Tabs, usePathname, useSegments } from 'expo-router';
 import React, { useEffect, useMemo } from 'react';
-import { Image, Platform, StyleSheet, View } from 'react-native';
+import { Image, Platform, StyleSheet, View, I18nManager } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useTrack } from '@/contexts/TrackContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 export default function TabLayout() {
   const { setCurrentTrack } = useTrack();
+  const { isRTL, language } = useLanguage();
   const pathname = usePathname();
   const segments = useSegments();
 
@@ -22,13 +24,13 @@ export default function TabLayout() {
         const trackMatch = pathname.match(/\/tracks\/(\d+)/);
         if (trackMatch && trackMatch[1]) {
           const trackId = parseInt(trackMatch[1]);
-          setCurrentTrack(trackId);
+          setCurrentTrack(trackId, null); // Track object will be set when loaded from API
         }
       } else if (!pathname.includes('/tracks/') && 
                  !pathname.includes('/assessments/') &&
                  !pathname.includes('/lessons/')) {
         // نحن في صفحة رئيسية - نمسح الـ track
-        setCurrentTrack(null);
+        setCurrentTrack(null, null);
       }
       // إذا كنا في assessments أو lessons، لا نفعل شيء (نحتفظ بالـ track الحالي)
     }
@@ -57,6 +59,12 @@ export default function TabLayout() {
     );
   }, [pathname, segments]);
 
+  // إجبار Tab Bar على استخدام isRTL من Context
+  useEffect(() => {
+    // منع التبديل التلقائي للأيقونات في RTL
+    I18nManager.swapLeftAndRightInRTL(false);
+  }, [isRTL]);
+
   return (
     <ErrorBoundary>
       <Tabs
@@ -84,69 +92,17 @@ export default function TabLayout() {
         },
       }}
     >
+      {/* ترتيب Tabs للعربية (RTL): profile, bookmarks, index, shop, support */}
+      {/* هذا الترتيب يظهر في Tab Bar من اليمين إلى اليسار */}
       <Tabs.Screen
-        name="support"
+        name="profile"
         options={{
-          title: 'مساعدة',
-          tabBarIcon: ({ focused }) => (
-            <View style={styles.iconContainer}>
-              {focused && <View style={styles.iconGlow} />}
-              <MaterialIcons 
-                name="support-agent" 
-                size={19} 
-                color={focused ? '#D4AF37' : '#8FA4C0'} 
-              />
-            </View>
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="shop"
-        options={{
-          title: 'المتجر',
+          title: 'الملف',
           tabBarIcon: ({ focused }) => (
             <View style={styles.iconContainer}>
               {focused && <View style={styles.iconGlow} />}
               <Image
-                source={require('@/assets/images/tab_icons/cart.png')}
-                style={[
-                  styles.icon,
-                  { opacity: focused ? 1 : 0.6 }
-                ]}
-                resizeMode="contain"
-                tintColor={focused ? '#D4AF37' : '#8FA4C0'}
-              />
-            </View>
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: 'الرئيسية',
-          tabBarIcon: ({ focused }) => (
-            <View style={[
-              styles.HomePageContainer,
-              focused && styles.HomePageContainerFocused
-            ]}>
-              <Image
-                source={require('@/assets/images/tab_icons/home.png')}
-                style={styles.homeIcon}
-                resizeMode="contain"
-              />
-            </View>
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="lessons"
-        options={{
-          title: 'الدروس',
-          tabBarIcon: ({ focused }) => (
-            <View style={styles.iconContainer}>
-              {focused && <View style={styles.iconGlow} />}
-              <Image
-                source={require('@/assets/images/tab_icons/linear.png')}
+                source={require('@/assets/images/tab_icons/user.png')}
                 style={[
                   styles.icon,
                   { opacity: focused ? 1 : 0.6 }
@@ -175,20 +131,54 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="profile"
+        name="index"
         options={{
-          title: 'الملف',
+          title: 'الرئيسية',
+          tabBarIcon: ({ focused }) => (
+            <View style={[
+              styles.HomePageContainer,
+              focused && styles.HomePageContainerFocused
+            ]}>
+              <Image
+                source={require('@/assets/images/tab_icons/home.png')}
+                style={styles.homeIcon}
+                resizeMode="contain"
+              />
+            </View>
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="shop"
+        options={{
+          title: 'المتجر',
           tabBarIcon: ({ focused }) => (
             <View style={styles.iconContainer}>
               {focused && <View style={styles.iconGlow} />}
               <Image
-                source={require('@/assets/images/tab_icons/user.png')}
+                source={require('@/assets/images/tab_icons/cart.png')}
                 style={[
                   styles.icon,
                   { opacity: focused ? 1 : 0.6 }
                 ]}
                 resizeMode="contain"
                 tintColor={focused ? '#D4AF37' : '#8FA4C0'}
+              />
+            </View>
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="support"
+        options={{
+          title: 'مساعدة',
+          tabBarIcon: ({ focused }) => (
+            <View style={styles.iconContainer}>
+              {focused && <View style={styles.iconGlow} />}
+              <MaterialIcons 
+                name="support-agent" 
+                size={19} 
+                color={focused ? '#D4AF37' : '#8FA4C0'} 
               />
             </View>
           ),
